@@ -717,7 +717,7 @@ def usuarios_page(data):
     st.markdown("### Crear usuario")
 
     with st.form("crear_usuario", clear_on_submit=True):
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5 = st.columns([1, 1, 1, .9, .9])
 
         with c1:
             usuario = st.text_input("Usuario")
@@ -727,18 +727,16 @@ def usuarios_page(data):
             password = st.text_input("Contraseña", type="password")
         with c4:
             rol = st.selectbox("Rol", ["Administrador", "Auditor"])
+        with c5:
             estado = st.selectbox("Estado", ["Activo", "Inactivo"])
 
-        guardar = st.form_submit_button("Crear usuario", type="primary")
-
-        if guardar:
+        if st.form_submit_button("Crear usuario", type="primary"):
             if not usuario or not nombre or not password:
                 st.error("Usuario, nombre y contraseña son obligatorios.")
             else:
                 users = data["Usuarios"].copy()
-
                 if usuario in users["Usuario"].astype(str).tolist():
-                    st.error("Este usuario ya existe. Edítalo desde la tabla inferior.")
+                    st.error("Este usuario ya existe.")
                 else:
                     nuevo = pd.DataFrame(
                         [[usuario, password, nombre, rol, estado]],
@@ -750,22 +748,91 @@ def usuarios_page(data):
                     clear_cache_and_rerun()
 
     st.markdown("---")
-    st.markdown("### Editar usuarios existentes")
-    st.caption("Puedes modificar nombre, contraseña, rol y estado directamente en la tabla.")
+    st.markdown("### Usuarios existentes")
 
-    edited_users = st.data_editor(
-        data["Usuarios"],
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        disabled=["Usuario"]
-    )
+    users = data["Usuarios"].copy()
 
-    if st.button("Guardar cambios de usuarios", type="primary"):
-        data["Usuarios"] = edited_users.fillna("")
-        save_data(data)
-        st.success("Usuarios actualizados correctamente.")
-        clear_cache_and_rerun()
+    st.markdown("""
+    <div class="table-head" style="grid-template-columns: 1fr 1.4fr 1fr 1fr 180px;">
+      <div>Usuario</div><div>Nombre</div><div>Rol</div><div>Estado</div><div>Acciones</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    for idx, row in users.iterrows():
+        usuario_actual = str(row["Usuario"])
+
+        c1, c2, c3, c4, c5 = st.columns([1, 1.4, 1, 1, 1.1])
+        with c1:
+            st.write(usuario_actual)
+        with c2:
+            st.write(row["Nombre"])
+        with c3:
+            st.write(row["Rol"])
+        with c4:
+            st.write(row["Estado"])
+        with c5:
+            b1, b2 = st.columns(2)
+            with b1:
+                if st.button("Editar", key=f"edit_user_{usuario_actual}"):
+                    st.session_state["edit_user"] = usuario_actual
+                    st.rerun()
+            with b2:
+                if usuario_actual != "admin":
+                    if st.button("Inactivar", key=f"inact_user_{usuario_actual}"):
+                        data["Usuarios"].loc[idx, "Estado"] = "Inactivo"
+                        save_data(data)
+                        st.success("Usuario inactivado.")
+                        clear_cache_and_rerun()
+
+    edit_user = st.session_state.get("edit_user")
+
+    if edit_user:
+        users = data["Usuarios"].copy()
+        hit = users[users["Usuario"].astype(str) == edit_user]
+
+        if not hit.empty:
+            idx = hit.index[0]
+            row = hit.iloc[0]
+
+            st.markdown("---")
+            st.markdown(f"### Editar usuario: `{edit_user}`")
+
+            with st.form(f"form_edit_user_{edit_user}"):
+                c1, c2, c3, c4 = st.columns(4)
+
+                with c1:
+                    nuevo_nombre = st.text_input("Nombre", value=str(row["Nombre"]))
+                with c2:
+                    nueva_password = st.text_input("Contraseña", value=str(row["Password"]), type="password")
+                with c3:
+                    nuevo_rol = st.selectbox(
+                        "Rol",
+                        ["Administrador", "Auditor"],
+                        index=0 if row["Rol"] == "Administrador" else 1
+                    )
+                with c4:
+                    nuevo_estado = st.selectbox(
+                        "Estado",
+                        ["Activo", "Inactivo"],
+                        index=0 if row["Estado"] == "Activo" else 1
+                    )
+
+                guardar = st.form_submit_button("Guardar cambios", type="primary")
+                cancelar = st.form_submit_button("Cancelar")
+
+                if guardar:
+                    data["Usuarios"].loc[idx, "Nombre"] = nuevo_nombre
+                    data["Usuarios"].loc[idx, "Password"] = nueva_password
+                    data["Usuarios"].loc[idx, "Rol"] = nuevo_rol
+                    data["Usuarios"].loc[idx, "Estado"] = nuevo_estado
+                    save_data(data)
+                    st.session_state.pop("edit_user", None)
+                    st.success("Usuario actualizado correctamente.")
+                    clear_cache_and_rerun()
+
+                if cancelar:
+                    st.session_state.pop("edit_user", None)
+                    st.rerun()
 
 def catalogos_page(data):
     st.subheader("Catálogos")
