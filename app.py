@@ -314,7 +314,7 @@ def login_view(data):
                 st.rerun()
             else:
                 st.error("Usuario o contraseña incorrectos, o usuario inactivo.")
-        st.caption("Usuario inicial: admin / admin123")
+      
 
 
 # =========================
