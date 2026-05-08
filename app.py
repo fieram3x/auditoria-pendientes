@@ -793,7 +793,7 @@ for idx, row in users.iterrows():
                         st.success("Usuario inactivado.")
                         clear_cache_and_rerun()
 
-    edit_user = st.session_state.get("edit_user")
+edit_user = st.session_state.get("edit_user")
 
     if edit_user:
         users = data["Usuarios"].copy()
