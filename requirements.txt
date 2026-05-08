@@ -1,4 +1,22 @@
-streamlit
-pandas
-openpyxl
-plotly
+# Auditoría Pendientes
+
+App web en Streamlit para control de incidencias/pendientes de auditoría.
+
+## Archivos necesarios
+
+- `app.py`: aplicación principal.
+- `requirements.txt`: librerías para Streamlit Cloud.
+- `.streamlit/config.toml`: tema claro.
+- `auditoria_pendientes.xlsx`: base de datos inicial en Excel.
+
+## Usuarios demo
+
+- Administrador: `admin` / `admin123`
+- Auditor: `auditor` / `auditor123`
+
+## Subir actualización a GitHub
+
+1. Entrar al repositorio.
+2. Reemplazar `app.py`, `requirements.txt`, `.streamlit/config.toml` y/o `auditoria_pendientes.xlsx`.
+3. Hacer `Commit changes`.
+4. Streamlit Cloud actualizará la app automáticamente.
