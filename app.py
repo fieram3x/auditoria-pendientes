@@ -1,624 +1,600 @@
 import os
 from io import BytesIO
 from datetime import datetime, date
+
 import pandas as pd
-import streamlit as st
 import plotly.express as px
+import streamlit as st
 
-APP_TITLE = "Auditoría Pendientes"
-EXCEL_FILE = "auditoria_pendientes.xlsx"
+APP_TITLE = "Control de Pendientes de Auditoría"
+LOCAL_EXCEL = "auditoria_pendientes.xlsx"
 SHEETS = ["Pendientes", "Bitacora", "Usuarios", "Catalogos"]
+CLOSED_STATUS = ["Resuelto", "Cerrado"]
 
-st.set_page_config(page_title=APP_TITLE, page_icon="🛡️", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title=APP_TITLE, layout="wide", initial_sidebar_state="expanded")
 
-# =========================
-# Estilos - tema claro
-# =========================
-st.markdown("""
-<style>
-:root{
-  --primary:#1a73e8;
-  --primary-dark:#0b57d0;
-  --bg:#f7faff;
-  --card:#ffffff;
-  --border:#e4eaf3;
-  --text:#0f172a;
-  --muted:#64748b;
-  --success:#16a34a;
-  --warn:#f59e0b;
-  --danger:#ef4444;
-}
-.stApp { background: var(--bg); color: var(--text); }
-.block-container { padding-top: 1.1rem; padding-bottom: 2rem; max-width: 1480px; }
-[data-testid="stSidebar"] { background:#ffffff; border-right:1px solid var(--border); }
-[data-testid="stSidebar"] * { color:#0f172a; }
-hr { margin: .7rem 0 1rem; border-color:var(--border); }
-.app-header {display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.9rem;}
-.brand {display:flex; align-items:center; gap:.8rem;}
-.logo {width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#1a73e8,#67a3ff);display:flex;align-items:center;justify-content:center;color:white;font-size:24px;box-shadow:0 8px 18px rgba(26,115,232,.18);}
-.title h1 {font-size:26px;margin:0;line-height:1.05;color:#0f172a;font-weight:800;}
-.title p {font-size:14px;margin:3px 0 0;color:#64748b;}
-.user-pill {background:#fff;border:1px solid var(--border);border-radius:999px;padding:7px 12px;color:#334155;box-shadow:0 1px 4px rgba(15,23,42,.04);font-size:13px;}
-.kpi-card {background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:0 1px 5px rgba(15,23,42,.05);min-height:105px;}
-.kpi-label {font-size:14px;color:#0f172a;font-weight:650;margin-bottom:8px;}
-.kpi-value {font-size:28px;font-weight:850;color:#0f172a;line-height:1;}
-.kpi-sub {font-size:12.5px;color:#64748b;margin-top:8px;}
-.filter-box {background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin:.2rem 0 .8rem;box-shadow:0 1px 4px rgba(15,23,42,.04);}
-.report-card {background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 5px rgba(15,23,42,.05);overflow:hidden;margin-top:.7rem;}
-.table-head, .table-row {display:grid; grid-template-columns: 105px 94px 86px 130px 150px 86px 140px minmax(220px,1fr) 86px; align-items:center; gap:10px;}
-.table-head {background:#f8fbff;border-bottom:1px solid var(--border);font-weight:750;font-size:12.5px;color:#334155;padding:11px 14px;}
-.table-row {padding:9px 14px;border-bottom:1px solid var(--border);font-size:12.5px;color:#0f172a;}
-.table-row:hover {background:#f8fbff;}
-.cell-muted {color:#64748b;}
-.badge {display:inline-flex;align-items:center;justify-content:center;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:700;line-height:1;border:1px solid transparent;white-space:nowrap;}
-.badge-alta,.badge-crítica,.badge-critica {color:#dc2626;background:#fee2e2;border-color:#fecaca;}
-.badge-media {color:#d97706;background:#fff7ed;border-color:#fed7aa;}
-.badge-baja {color:#16a34a;background:#dcfce7;border-color:#bbf7d0;}
-.badge-pendiente {color:#2563eb;background:#dbeafe;border-color:#bfdbfe;}
-.badge-en-proceso {color:#d97706;background:#fff7ed;border-color:#fed7aa;}
-.badge-en-espera-de-respuesta,.badge-escalado {color:#7c3aed;background:#ede9fe;border-color:#ddd6fe;}
-.badge-resuelto,.badge-cerrado {color:#16a34a;background:#dcfce7;border-color:#bbf7d0;}
-.badge-vencido {color:#dc2626;background:#fee2e2;border-color:#fecaca;}
-.small-note {font-size:12px;color:#64748b;}
-.detail-card {background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 1px 5px rgba(15,23,42,.05);height:100%;}
-.detail-title {font-weight:800;color:#0f172a;margin-bottom:12px;}
-.timeline {border-left:2px solid #dbeafe; margin-left:8px; padding-left:18px;}
-.timeline-item {position:relative; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid #eef2f7;}
-.timeline-item:before {content:""; position:absolute; left:-25px; top:3px; width:12px; height:12px; border-radius:50%; background:#1a73e8; box-shadow:0 0 0 4px #dbeafe;}
-.stButton>button {border-radius:9px; border:1px solid var(--border); background:#ffffff; color:#0f172a; font-weight:650; padding:.36rem .62rem;}
-.stButton>button:hover {border-color:#1a73e8;color:#1a73e8;background:#f8fbff;}
-div[data-testid="stMetric"] {background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 1px 5px rgba(15,23,42,.05);}
-section[data-testid="stSidebar"] .stButton>button {width:100%; justify-content:flex-start;}
-@media (max-width: 1200px){.table-head,.table-row{grid-template-columns: 90px 85px 80px 115px 125px 75px 120px minmax(170px,1fr) 78px;font-size:11.5px;gap:7px;}.title h1{font-size:22px;}}
+# -------------------- ESTILO CLARO --------------------
+st.markdown(
+    """
+    <style>
+        :root { color-scheme: light; }
+        .stApp { background: #f4f8fb; color: #172033; }
+        [data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid #dbe5ef; }
+        [data-testid="stHeader"] { background: rgba(244,248,251,.9); }
+        .block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
+        h1, h2, h3 { color: #102a43; }
+        .app-title {
+            background: linear-gradient(135deg, #ffffff, #eaf6ff);
+            border: 1px solid #d7e8f5;
+            border-radius: 18px;
+            padding: 18px 22px;
+            margin-bottom: 18px;
+            box-shadow: 0 6px 20px rgba(16,42,67,.06);
+        }
+        .app-title h1 { margin: 0; font-size: 1.65rem; }
+        .app-title p { margin: 6px 0 0 0; color: #486581; }
+        .metric-card, div[data-testid="stMetric"] {
+            background: #ffffff;
+            border: 1px solid #dbe5ef;
+            border-radius: 16px;
+            padding: 14px 16px;
+            box-shadow: 0 5px 16px rgba(16,42,67,.06);
+        }
+        .incident-card {
+            background: #ffffff;
+            border: 1px solid #dbe5ef;
+            border-left: 6px solid #2f80ed;
+            border-radius: 16px;
+            padding: 16px 18px;
+            margin: 12px 0;
+            box-shadow: 0 6px 18px rgba(16,42,67,.06);
+        }
+        .incident-title { font-size: 1.05rem; font-weight: 700; color: #102a43; margin-bottom: 6px; }
+        .incident-meta { color: #486581; font-size: .88rem; margin-bottom: 8px; }
+        .tag {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 999px;
+            background: #eef6ff;
+            border: 1px solid #cfe8ff;
+            color: #1f5f99;
+            font-size: .78rem;
+            margin-right: 5px;
+            margin-bottom: 4px;
+        }
+        .tag-red { background:#fff1f0; border-color:#ffd6d1; color:#b42318; }
+        .tag-orange { background:#fff7e6; border-color:#ffe2ad; color:#9a5b00; }
+        .tag-green { background:#ecfdf3; border-color:#c7f0d8; color:#027a48; }
+        .small-note { color:#627d98; font-size:.85rem; }
+        div.stButton > button, div.stDownloadButton > button {
+            border-radius: 10px;
+            border: 1px solid #b7c9da;
+            background: #ffffff;
+            color: #102a43;
+        }
+        div.stButton > button:hover, div.stDownloadButton > button:hover {
+            border-color: #2f80ed;
+            color: #2f80ed;
+        }
+        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+        .stTabs [data-baseweb="tab"] {
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid #dbe5ef;
+            padding: 10px 16px;
+        }
+        .stTabs [aria-selected="true"] { border-color: #2f80ed; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-/* tabla compacta estilo reporte */
-.row-actions {display:flex;align-items:center;justify-content:center;}
-div[data-testid="stPopover"] button {min-width:36px !important; padding:.25rem .45rem !important; border-radius:10px !important;}
-.action-menu-note {font-size:12px;color:#64748b;margin-bottom:6px;}
-.edit-panel {background:#ffffff;border:1px solid var(--border);border-radius:14px;padding:16px;margin:.8rem 0;box-shadow:0 1px 6px rgba(15,23,42,.05);}
-
-</style>
-""", unsafe_allow_html=True)
-
-# =========================
-# Utilidades
-# =========================
-def normalize_text(value):
-    if pd.isna(value) or value is None:
-        return ""
-    return str(value).strip()
-
-def safe_date(value):
-    if pd.isna(value) or value in [None, ""]:
-        return ""
-    try:
-        return pd.to_datetime(value).strftime("%d/%m/%Y")
-    except Exception:
-        return str(value)
-
-def badge(text, kind=""):
-    t = normalize_text(text) or "Sin dato"
-    k = (kind or t).lower().strip().replace(" ", "-").replace("/", "-")
-    k = k.replace("á","a").replace("é","e").replace("í","i").replace("ó","o").replace("ú","u")
-    return f'<span class="badge badge-{k}">{t}</span>'
-
-def empty_df(name):
-    if name == "Pendientes":
-        return pd.DataFrame(columns=["ID","Fecha Creación","Hotel","Departamento","Tipo de Incidencia","Impacto","Prioridad","Estatus","Fecha Compromiso","Descripción","Fecha Cierre","Última Actualización"])
-    if name == "Bitacora":
-        return pd.DataFrame(columns=["ID Pendiente","Fecha","Usuario","Acción","Comentario","Estado Anterior","Estado Nuevo"])
-    if name == "Usuarios":
-        return pd.DataFrame(columns=["Usuario","Password","Nombre","Rol","Estado"])
-    return pd.DataFrame(columns=["Categoria","Valor"])
-
-def seed_data():
+# -------------------- EXCEL --------------------
+def create_empty_excel():
+    pendientes = pd.DataFrame(columns=[
+        "ID", "Fecha Creación", "Hotel", "Departamento", "Tipo de Incidencia", "Impacto",
+        "Prioridad", "Estatus", "Fecha Compromiso", "Descripción", "Comentario Inicial",
+        "Fecha Cierre", "Creado Por", "Última Actualización"
+    ])
+    bitacora = pd.DataFrame(columns=[
+        "ID Pendiente", "Fecha", "Usuario", "Acción", "Estado Anterior", "Estado Nuevo", "Comentario"
+    ])
     usuarios = pd.DataFrame([
-        ["admin","admin123","Administrador","Administrador","Activo"],
-        ["auditor","auditor123","Auditor","Auditor","Activo"],
-    ], columns=empty_df("Usuarios").columns)
-    catalogos = []
-    for v in ["5910 - PPRL","5911 - ZEL","5917 - MPCB","5918 - MCB","5930 - PGC"]: catalogos.append(["Hotel", v])
-    for v in ["Recepción","Reservas","A&B","Spa","Contabilidad","IT","Club Meliá","Auditoría Nocturna","Auditoría Diurna"]: catalogos.append(["Departamento", v])
-    for v in ["Cobro no realizado","Routing incorrecto","Check-in mal procesado","Rate Code incorrecto","Factura no volcada a SAP","Diferencia POS vs PMS","Resort Credit incorrecto","HTC incorrecto","Falta de soporte","Incidencia IT"]: catalogos.append(["Tipo de Incidencia", v])
-    for v in ["Operativo","Financiero","Contable","Cliente","Sistema"]: catalogos.append(["Impacto", v])
-    for v in ["Baja","Media","Alta","Crítica"]: catalogos.append(["Prioridad", v])
-    for v in ["Pendiente","En proceso","En espera de respuesta","Escalado","Resuelto","Cerrado"]: catalogos.append(["Estatus", v])
-    catalogos = pd.DataFrame(catalogos, columns=empty_df("Catalogos").columns)
-    pendientes = pd.DataFrame([
-        ["INC-2026-001", datetime.now().strftime("%Y-%m-%d"), "5918 - MCB", "Recepción", "Cobro no realizado", "Financiero", "Alta", "Pendiente", "", "Pendiente de validar cobro no realizado en recepción.", "", datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
-    ], columns=empty_df("Pendientes").columns)
-    bit = pd.DataFrame([["INC-2026-001", datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "admin", "Creación", "Incidencia creada.", "", "Pendiente"]], columns=empty_df("Bitacora").columns)
-    return {"Pendientes": pendientes, "Bitacora": bit, "Usuarios": usuarios, "Catalogos": catalogos}
+        {"Usuario": "admin", "Nombre": "Administrador", "Contraseña": "admin123", "Rol": "Administrador", "Estado": "Activo"},
+        {"Usuario": "auditor", "Nombre": "Auditor Demo", "Contraseña": "auditor123", "Rol": "Auditor", "Estado": "Activo"},
+    ])
+    catalogos = pd.DataFrame({
+        "Hoteles": ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"],
+        "Departamentos": ["Recepción", "Reservas", "Spa", "A&B", "Contabilidad", "IT", "Club Meliá"],
+        "Tipos de Incidencia": ["Cobro no realizado", "Routing incorrecto", "Rate Code incorrecto", "Factura no volcada", "Incidencia IT", "Falta de soporte", "Error operativo"],
+        "Impactos": ["Operativo", "Financiero", "Contable", "Cliente", "Sistema"],
+        "Prioridades": ["Baja", "Media", "Alta", "Crítica"],
+        "Estatus": ["Pendiente", "En proceso", "En espera de respuesta", "Escalado", "Resuelto", "Cerrado"],
+    })
+    save_workbook_data({"Pendientes": pendientes, "Bitacora": bitacora, "Usuarios": usuarios, "Catalogos": catalogos})
 
-def ensure_excel():
-    if not os.path.exists(EXCEL_FILE):
-        data = seed_data()
-        with pd.ExcelWriter(EXCEL_FILE, engine="openpyxl") as writer:
-            for sh in SHEETS:
-                data[sh].to_excel(writer, sheet_name=sh, index=False)
 
-def load_data():
-    ensure_excel()
-    try:
-        xls = pd.read_excel(EXCEL_FILE, sheet_name=None, engine="openpyxl")
-    except Exception:
-        xls = seed_data()
-        save_data(xls)
-    data = {}
-    for sh in SHEETS:
-        data[sh] = xls.get(sh, empty_df(sh)).copy()
-        for col in empty_df(sh).columns:
-            if col not in data[sh].columns:
-                data[sh][col] = ""
-        data[sh] = data[sh][list(empty_df(sh).columns)]
-        data[sh] = data[sh].fillna("")
+def ensure_columns(data):
+    defaults = {
+        "Pendientes": ["ID", "Fecha Creación", "Hotel", "Departamento", "Tipo de Incidencia", "Impacto", "Prioridad", "Estatus", "Fecha Compromiso", "Descripción", "Comentario Inicial", "Fecha Cierre", "Creado Por", "Última Actualización"],
+        "Bitacora": ["ID Pendiente", "Fecha", "Usuario", "Acción", "Estado Anterior", "Estado Nuevo", "Comentario"],
+        "Usuarios": ["Usuario", "Nombre", "Contraseña", "Rol", "Estado"],
+        "Catalogos": ["Hoteles", "Departamentos", "Tipos de Incidencia", "Impactos", "Prioridades", "Estatus"],
+    }
+    for sheet, cols in defaults.items():
+        if sheet not in data or data[sheet] is None:
+            data[sheet] = pd.DataFrame(columns=cols)
+        for col in cols:
+            if col not in data[sheet].columns:
+                data[sheet][col] = pd.NA
+        data[sheet] = data[sheet][cols]
+
+    # Evita el error de pandas al colocar datetime en columnas vacías/float.
+    for col in ["Fecha Creación", "Fecha Compromiso", "Fecha Cierre", "Última Actualización"]:
+        if col in data["Pendientes"].columns:
+            data["Pendientes"][col] = pd.to_datetime(data["Pendientes"][col], errors="coerce").astype("object")
+    if "Fecha" in data["Bitacora"].columns:
+        data["Bitacora"]["Fecha"] = pd.to_datetime(data["Bitacora"]["Fecha"], errors="coerce").astype("object")
     return data
 
-def save_data(data):
-    with pd.ExcelWriter(EXCEL_FILE, engine="openpyxl", mode="w") as writer:
-        for sh in SHEETS:
-            df = data.get(sh, empty_df(sh)).copy().fillna("")
-            df.to_excel(writer, sheet_name=sh, index=False)
-
-def clear_cache_and_rerun():
-    st.cache_data.clear()
-    st.rerun()
 
 @st.cache_data(ttl=2)
-def cached_load():
-    return load_data()
+def load_workbook_data():
+    if not os.path.exists(LOCAL_EXCEL):
+        create_empty_excel()
+    data = pd.read_excel(LOCAL_EXCEL, sheet_name=None, engine="openpyxl")
+    return ensure_columns(data)
 
-def get_catalog(data, category, fallback=None):
-    cat = data.get("Catalogos", empty_df("Catalogos"))
-    vals = cat.loc[cat["Categoria"].astype(str).str.strip().eq(category), "Valor"].astype(str).str.strip().tolist()
-    vals = [v for v in vals if v]
-    return vals or (fallback or [])
+
+def save_workbook_data(data):
+    data = ensure_columns(data)
+    with pd.ExcelWriter(LOCAL_EXCEL, engine="openpyxl", mode="w") as writer:
+        for sheet in SHEETS:
+            data.get(sheet, pd.DataFrame()).to_excel(writer, sheet_name=sheet, index=False)
+    st.cache_data.clear()
+
+
+def list_values(df, col):
+    if col not in df.columns:
+        return []
+    values = [str(x).strip() for x in df[col].dropna().tolist() if str(x).strip() and str(x).strip().lower() != "nan"]
+    return sorted(list(dict.fromkeys(values)))
+
+
+def dynamic_values(pendientes, catalogos, field, catalog_field=None):
+    vals = list_values(pendientes, field)
+    if vals:
+        return vals
+    return list_values(catalogos, catalog_field or field)
+
 
 def next_id(df):
-    year = datetime.now().year
+    if df.empty or "ID" not in df.columns:
+        return "INC-0001"
     nums = []
-    for x in df.get("ID", []):
-        s = str(x)
-        if s.startswith(f"INC-{year}-"):
-            try: nums.append(int(s.split("-")[-1]))
-            except Exception: pass
-    return f"INC-{year}-{(max(nums) + 1 if nums else 1):03d}"
+    for val in df["ID"].dropna().astype(str):
+        if val.startswith("INC-"):
+            try:
+                nums.append(int(val.replace("INC-", "")))
+            except ValueError:
+                pass
+    return f"INC-{(max(nums) + 1 if nums else 1):04d}"
 
-def dynamic_options(df, col):
-    vals = sorted([v for v in df[col].astype(str).str.strip().unique().tolist() if v and v.lower() != "nan"])
-    return ["Todos"] + vals
 
-def filtered_excel_bytes(df):
+def add_log(data, id_pendiente, usuario, accion, estado_ant, estado_nuevo, comentario):
+    row = {
+        "ID Pendiente": str(id_pendiente),
+        "Fecha": datetime.now(),
+        "Usuario": usuario,
+        "Acción": accion,
+        "Estado Anterior": estado_ant,
+        "Estado Nuevo": estado_nuevo,
+        "Comentario": comentario,
+    }
+    data["Bitacora"] = pd.concat([data["Bitacora"], pd.DataFrame([row])], ignore_index=True)
+
+
+def excel_download(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Pendientes Filtrados")
     return output.getvalue()
 
-# =========================
-# Login
-# =========================
-def login_view(data):
-    st.markdown("""
-    <div style="max-width:430px;margin:8vh auto 0;background:#fff;border:1px solid #e4eaf3;border-radius:18px;padding:28px;box-shadow:0 12px 38px rgba(15,23,42,.08);">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
-        <div class="logo">🛡️</div>
-        <div class="title"><h1>Auditoría Pendientes</h1><p>Control y seguimiento de incidencias</p></div>
-      </div>
+
+def fmt_date(value):
+    if pd.isna(value) or value == "":
+        return "-"
+    try:
+        return pd.to_datetime(value).strftime("%d/%m/%Y")
+    except Exception:
+        return str(value)
+
+
+def fmt_dt(value):
+    if pd.isna(value) or value == "":
+        return "-"
+    try:
+        return pd.to_datetime(value).strftime("%d/%m/%Y %I:%M %p")
+    except Exception:
+        return str(value)
+
+
+def priority_class(priority):
+    if str(priority).lower() in ["crítica", "critica", "alta"]:
+        return "tag-red"
+    if str(priority).lower() == "media":
+        return "tag-orange"
+    return "tag-green"
+
+
+def filter_data(df, filters, search_text=""):
+    out = df.copy()
+    for field, selected in filters.items():
+        if selected and field in out.columns:
+            out = out[out[field].astype(str).isin(selected)]
+    if search_text:
+        mask = out.astype(str).apply(lambda x: x.str.contains(search_text, case=False, na=False)).any(axis=1)
+        out = out[mask]
+    return out
+
+
+# -------------------- LOGIN --------------------
+if "auth" not in st.session_state:
+    st.session_state.auth = False
+    st.session_state.user = None
+    st.session_state.role = None
+if "show_create" not in st.session_state:
+    st.session_state.show_create = False
+if "log_id" not in st.session_state:
+    st.session_state.log_id = None
+
+st.markdown(
+    f"""
+    <div class="app-title">
+        <h1>{APP_TITLE}</h1>
+        <p>Seguimiento de incidencias, estatus, bitácora y dashboard gerencial.</p>
     </div>
-    """, unsafe_allow_html=True)
-    with st.container():
-        c1, c2, c3 = st.columns([1, 1.1, 1])
-        with c2:
-            usuario = st.text_input("Usuario")
-            password = st.text_input("Contraseña", type="password")
-            if st.button("Iniciar sesión", type="primary", use_container_width=True):
-                users = data["Usuarios"]
-                hit = users[(users["Usuario"].astype(str) == usuario) & (users["Password"].astype(str) == password) & (users["Estado"].astype(str) == "Activo")]
-                if not hit.empty:
-                    st.session_state["logged"] = True
-                    st.session_state["user"] = usuario
-                    st.session_state["name"] = hit.iloc[0]["Nombre"]
-                    st.session_state["role"] = hit.iloc[0]["Rol"]
-                    st.rerun()
-                else:
-                    st.error("Usuario o contraseña incorrectos.")
-            st.caption("Usuarios demo: admin/admin123 | auditor/auditor123")
+    """,
+    unsafe_allow_html=True,
+)
 
-# =========================
-# Header y navegación
-# =========================
-def header():
-    st.markdown(f"""
-    <div class="app-header">
-      <div class="brand">
-        <div class="logo">🛡️</div>
-        <div class="title"><h1>{APP_TITLE}</h1><p>Control y seguimiento de incidencias</p></div>
-      </div>
-      <div class="user-pill">👤 {st.session_state.get('name','Usuario')} · {st.session_state.get('role','')}</div>
-    </div>
-    """, unsafe_allow_html=True)
+data = load_workbook_data()
+usuarios = data["Usuarios"]
 
-def sidebar_nav():
-    st.sidebar.markdown("### Menú")
-    if "page" not in st.session_state:
-        st.session_state.page = "Dashboard"
-    pages = ["Dashboard", "Pendientes", "Bitácora"]
-    if st.session_state.get("role") == "Administrador":
-        pages += ["Usuarios", "Catálogos"]
-    for p in pages:
-        if st.sidebar.button(p, use_container_width=True, type="primary" if st.session_state.page == p else "secondary"):
-            st.session_state.page = p
-            st.rerun()
-    st.sidebar.markdown("---")
-    if st.sidebar.button("Cerrar sesión", use_container_width=True):
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
-        st.rerun()
-
-# =========================
-# Filtros y tabla reporte
-# =========================
-def apply_filters(df):
-    st.markdown('<div class="filter-box">', unsafe_allow_html=True)
-    f1, f2, f3, f4, f5, f6 = st.columns([1.1,1.1,1.2,1,1,1.2])
-    with f1: hotel = st.selectbox("Hotel", dynamic_options(df, "Hotel"), key="f_hotel")
-    with f2: depto = st.selectbox("Departamento", dynamic_options(df, "Departamento"), key="f_depto")
-    with f3: tipo = st.selectbox("Tipo de Incidencia", dynamic_options(df, "Tipo de Incidencia"), key="f_tipo")
-    with f4: prioridad = st.selectbox("Prioridad", dynamic_options(df, "Prioridad"), key="f_prioridad")
-    with f5: estatus = st.selectbox("Estatus", dynamic_options(df, "Estatus"), key="f_estatus")
-    with f6:
-        texto = st.text_input("Buscar", placeholder="ID, descripción, tipo...", key="f_texto")
-    dff = df.copy()
-    for col, val in [("Hotel", hotel), ("Departamento", depto), ("Tipo de Incidencia", tipo), ("Prioridad", prioridad), ("Estatus", estatus)]:
-        if val != "Todos":
-            dff = dff[dff[col].astype(str).eq(val)]
-    if texto:
-        q = texto.lower().strip()
-        mask = dff.astype(str).apply(lambda r: r.str.lower().str.contains(q, na=False).any(), axis=1)
-        dff = dff[mask]
-    b1, b2, b3 = st.columns([.75, .9, 4])
-    with b1:
-        if st.button("↻ Limpiar filtros"):
-            for k in ["f_hotel","f_depto","f_tipo","f_prioridad","f_estatus","f_texto"]:
-                st.session_state.pop(k, None)
-            st.rerun()
-    with b2:
-        st.download_button("⬇ Exportar", filtered_excel_bytes(dff), "pendientes_filtrados.xlsx", use_container_width=True)
-    with b3:
-        st.markdown(f'<div class="small-note" style="text-align:right;margin-top:9px;">Mostrando <b>{len(dff)}</b> resultado(s)</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-    return dff
-
-def render_report_table(data, dff):
-    estados = get_catalog(data, "Estatus", ["Pendiente","En proceso","En espera de respuesta","Escalado","Resuelto","Cerrado"])
-    st.markdown('<div class="report-card">', unsafe_allow_html=True)
-    st.markdown("""
-    <div class="table-head">
-      <div>ID</div><div>Fecha</div><div>Hotel</div><div>Departamento</div><div>Tipo de Incidencia</div><div>Prioridad</div><div>Estatus</div><div>Descripción</div><div>Acciones</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if dff.empty:
-        st.info("No hay incidencias con los filtros seleccionados.")
-        st.markdown('</div>', unsafe_allow_html=True)
-        return
-
-    for _, row in dff.reset_index().iterrows():
-        original_index = int(row["index"])
-        rid = str(row["ID"])
-        fecha = safe_date(row["Fecha Creación"])
-        hotel = str(row["Hotel"]).replace("5910 - ","").replace("5911 - ","").replace("5917 - ","").replace("5918 - ","").replace("5930 - ","")
-        desc = str(row["Descripción"])
-        if len(desc) > 92:
-            desc = desc[:89] + "..."
-
-        # Fila visual en formato reporte. Las acciones quedan compactas con tres puntos.
-        st.markdown(f"""
-        <div class="table-row">
-          <div><b>{rid}</b></div>
-          <div class="cell-muted">{fecha}</div>
-          <div>{hotel}</div>
-          <div>{row['Departamento']}</div>
-          <div>{row['Tipo de Incidencia']}</div>
-          <div>{badge(row['Prioridad'])}</div>
-          <div>{badge(row['Estatus'])}</div>
-          <div>{desc}</div>
-          <div class="row-actions">⋮</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Popover real de acciones alineado debajo del área de acciones, sin agrandar la fila.
-        spacer, action_col = st.columns([9.2, .8])
-        with action_col:
-            with st.popover("⋮", use_container_width=True):
-                st.markdown('<div class="action-menu-note">Acciones</div>', unsafe_allow_html=True)
-                if st.button("Editar", key=f"edit_{rid}", use_container_width=True):
-                    st.session_state["edit_id"] = rid
-                    st.session_state["selected_id"] = rid
-                    st.session_state["selected_idx"] = original_index
-                    st.rerun()
-                if st.button("Bitácora", key=f"bit_{rid}", use_container_width=True):
-                    st.session_state["show_bitacora_id"] = rid
-                    st.rerun()
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # Panel compacto de edición. Solo aparece cuando se presiona Acciones > Editar.
-    edit_id = st.session_state.get("edit_id")
-    if edit_id:
-        df = data["Pendientes"]
-        hit = df[df["ID"].astype(str) == edit_id]
-        if not hit.empty:
-            idx = hit.index[0]
-            row = hit.iloc[0]
-            st.markdown(f'<div class="edit-panel"><b>Editar incidencia {edit_id}</b></div>', unsafe_allow_html=True)
-            with st.form(f"form_edit_{edit_id}"):
-                c1, c2 = st.columns([.35, .65])
-                with c1:
-                    current_status = str(row["Estatus"])
-                    pos = estados.index(current_status) if current_status in estados else 0
-                    nuevo_estatus = st.selectbox("Nuevo estatus", estados, index=pos)
-                with c2:
-                    comentario = st.text_area("Comentario de actualización", placeholder="Agrega el comentario de seguimiento...", height=86)
-                b1, b2 = st.columns([.22, .78])
-                with b1:
-                    guardar = st.form_submit_button("Guardar", type="primary", use_container_width=True)
-                with b2:
-                    cancelar = st.form_submit_button("Cancelar", use_container_width=False)
-
-                if guardar:
-                    anterior = str(data["Pendientes"].loc[idx, "Estatus"])
-                    data["Pendientes"].loc[idx, "Estatus"] = str(nuevo_estatus)
-                    data["Pendientes"].loc[idx, "Última Actualización"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    if nuevo_estatus in ["Resuelto", "Cerrado"] and not str(data["Pendientes"].loc[idx, "Fecha Cierre"]):
-                        data["Pendientes"].loc[idx, "Fecha Cierre"] = datetime.now().strftime("%Y-%m-%d")
-                    accion = "Cambio de estatus" if nuevo_estatus != anterior else "Comentario"
-                    texto = comentario.strip() if comentario.strip() else "Actualización registrada desde el menú de acciones."
-                    bit = pd.DataFrame([[edit_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), st.session_state.get("user",""), accion, texto, anterior, nuevo_estatus]], columns=empty_df("Bitacora").columns)
-                    data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
-                    save_data(data)
-                    st.session_state.pop("edit_id", None)
-                    st.success("Incidencia actualizada correctamente.")
-                    clear_cache_and_rerun()
-                if cancelar:
-                    st.session_state.pop("edit_id", None)
-                    st.rerun()
-
-    # Panel de bitácora. Solo aparece cuando se presiona Acciones > Bitácora.
-    bit_id = st.session_state.get("show_bitacora_id")
-    if bit_id:
-        bit = data["Bitacora"]
-        bit = bit[bit["ID Pendiente"].astype(str) == bit_id].copy().sort_values("Fecha", ascending=False)
-        st.markdown(f'<div class="edit-panel"><b>Bitácora de {bit_id}</b></div>', unsafe_allow_html=True)
-        if bit.empty:
-            st.info("Esta incidencia todavía no tiene movimientos registrados.")
-        else:
-            st.dataframe(bit, use_container_width=True, hide_index=True)
-        if st.button("Cerrar bitácora", key=f"close_bit_{bit_id}"):
-            st.session_state.pop("show_bitacora_id", None)
-            st.rerun()
-
-def render_detail_panel(data):
-    selected_id = st.session_state.get("selected_id")
-    if not selected_id:
-        return
-    df = data["Pendientes"]
-    hit = df[df["ID"].astype(str) == selected_id]
-    if hit.empty:
-        return
-    row = hit.iloc[0]
-    bit = data["Bitacora"]
-    bit = bit[bit["ID Pendiente"].astype(str) == selected_id].copy()
-    bit = bit.sort_values("Fecha", ascending=False)
-    st.markdown("<br>", unsafe_allow_html=True)
-    c1, c2 = st.columns([1, 1.1])
-    with c1:
-        st.markdown(f"""
-        <div class="detail-card">
-          <div class="detail-title">📄 Detalle de la incidencia</div>
-          <div style="display:grid;grid-template-columns:130px 1fr;row-gap:9px;font-size:13px;">
-            <div class="cell-muted">ID:</div><div><b>{row['ID']}</b></div>
-            <div class="cell-muted">Fecha:</div><div>{safe_date(row['Fecha Creación'])}</div>
-            <div class="cell-muted">Hotel:</div><div>{row['Hotel']}</div>
-            <div class="cell-muted">Departamento:</div><div>{row['Departamento']}</div>
-            <div class="cell-muted">Tipo:</div><div>{row['Tipo de Incidencia']}</div>
-            <div class="cell-muted">Impacto:</div><div>{row['Impacto']}</div>
-            <div class="cell-muted">Prioridad:</div><div>{badge(row['Prioridad'])}</div>
-            <div class="cell-muted">Estatus:</div><div>{badge(row['Estatus'])}</div>
-            <div class="cell-muted">Descripción:</div><div>{row['Descripción']}</div>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-    with c2:
-        st.markdown('<div class="detail-card">', unsafe_allow_html=True)
-        h1, h2 = st.columns([1, .45])
-        with h1: st.markdown('<div class="detail-title">🧾 Bitácora / Seguimiento</div>', unsafe_allow_html=True)
-        with h2:
-            if st.button("+ Nueva nota", key="new_note"):
-                st.session_state["show_note"] = not st.session_state.get("show_note", False)
-        if st.session_state.get("show_note", False):
-            comentario = st.text_area("Comentario", key="note_comment")
-            if st.button("Guardar nota", type="primary"):
-                if comentario.strip():
-                    new = pd.DataFrame([[selected_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), st.session_state.get("user",""), "Comentario", comentario.strip(), "", row["Estatus"]]], columns=empty_df("Bitacora").columns)
-                    data["Bitacora"] = pd.concat([data["Bitacora"], new], ignore_index=True)
-                    save_data(data)
-                    st.session_state["show_note"] = False
-                    clear_cache_and_rerun()
-        if bit.empty:
-            st.caption("Sin movimientos registrados.")
-        else:
-            st.markdown('<div class="timeline">', unsafe_allow_html=True)
-            for _, b in bit.head(8).iterrows():
-                st.markdown(f"""
-                <div class="timeline-item">
-                  <div style="font-size:12.5px;color:#334155;"><b>{safe_date(b['Fecha'])}</b> · {b['Usuario']}</div>
-                  <div style="font-size:13px;font-weight:750;color:#0f172a;margin-top:3px;">{b['Acción']}</div>
-                  <div style="font-size:12.5px;color:#475569;margin-top:3px;">{b['Comentario']}</div>
-                  <div style="font-size:11.5px;color:#64748b;margin-top:3px;">{b['Estado Anterior']} → {b['Estado Nuevo']}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-# =========================
-# Páginas
-# =========================
-def kpi_cards(df):
-    total = len(df)
-    en_proceso = len(df[df["Estatus"].astype(str).eq("En proceso")])
-    cerradas = len(df[df["Estatus"].astype(str).isin(["Cerrado","Resuelto"])])
-    pendientes = len(df[df["Estatus"].astype(str).isin(["Pendiente","En espera de respuesta","Escalado"])])
-    vencidas = 0
-    if "Fecha Compromiso" in df.columns:
-        fc = pd.to_datetime(df["Fecha Compromiso"], errors="coerce")
-        vencidas = int(((fc < pd.Timestamp(date.today())) & (~df["Estatus"].astype(str).isin(["Cerrado","Resuelto"]))).sum())
-    cols = st.columns(5)
-    vals = [("Total Pendientes", total, "Todas las incidencias", "📋"), ("En Proceso", en_proceso, f"{(en_proceso/total*100 if total else 0):.1f}% del total", "⏱️"), ("Pendientes", pendientes, f"{(pendientes/total*100 if total else 0):.1f}% del total", "🕒"), ("Vencidas", vencidas, f"{(vencidas/total*100 if total else 0):.1f}% del total", "⚠️"), ("Completadas", cerradas, f"{(cerradas/total*100 if total else 0):.1f}% del total", "✅")]
-    for col, (label, value, sub, icon) in zip(cols, vals):
-        with col:
-            st.markdown(f"""
-            <div class="kpi-card">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div><div class="kpi-sub">{sub}</div></div>
-                <div style="font-size:28px;opacity:.9;">{icon}</div>
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-def dashboard_page(data):
-    df = data["Pendientes"].copy()
-    kpi_cards(df)
-    dff = apply_filters(df)
-    render_report_table(data, dff)
-    st.markdown("<br>", unsafe_allow_html=True)
-    g1, g2 = st.columns(2)
-    with g1:
-        st.markdown('<div class="detail-card"><div class="detail-title">Incidencias por departamento</div>', unsafe_allow_html=True)
-        if not dff.empty:
-            fig = px.bar(dff.groupby("Departamento").size().reset_index(name="Cantidad"), x="Departamento", y="Cantidad", text="Cantidad")
-            fig.update_layout(margin=dict(l=10,r=10,t=10,b=10), height=300, paper_bgcolor="white", plot_bgcolor="white")
-            st.plotly_chart(fig, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    with g2:
-        st.markdown('<div class="detail-card"><div class="detail-title">Tipos de incidencia más comunes</div>', unsafe_allow_html=True)
-        if not dff.empty:
-            top = dff.groupby("Tipo de Incidencia").size().reset_index(name="Cantidad").sort_values("Cantidad", ascending=False).head(8)
-            fig = px.bar(top, x="Cantidad", y="Tipo de Incidencia", orientation="h", text="Cantidad")
-            fig.update_layout(margin=dict(l=10,r=10,t=10,b=10), height=300, paper_bgcolor="white", plot_bgcolor="white")
-            st.plotly_chart(fig, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-def pendientes_page(data):
-    top1, top2 = st.columns([1, .22])
-    with top1:
-        st.subheader("Pendientes / Incidencias")
-        st.caption("Reporte operativo con filtros dinámicos y actualización directa de estatus.")
-    with top2:
-        if st.button("+ Nueva incidencia", type="primary", use_container_width=True):
-            st.session_state["show_create"] = not st.session_state.get("show_create", False)
-    if st.session_state.get("show_create", False):
-        with st.form("crear_inc", clear_on_submit=True):
-            st.markdown("#### Nueva incidencia")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                hotel = st.selectbox("Hotel", get_catalog(data, "Hotel"))
-                depto = st.selectbox("Departamento", get_catalog(data, "Departamento"))
-                prioridad = st.selectbox("Prioridad", get_catalog(data, "Prioridad"))
-            with c2:
-                tipo = st.selectbox("Tipo de Incidencia", get_catalog(data, "Tipo de Incidencia"))
-                impacto = st.selectbox("Impacto", get_catalog(data, "Impacto"))
-                estatus = st.selectbox("Estatus inicial", get_catalog(data, "Estatus"), index=0)
-            with c3:
-                fecha_comp = st.date_input("Fecha compromiso", value=None)
-                descripcion = st.text_area("Descripción", height=100)
-            submitted = st.form_submit_button("Guardar incidencia", type="primary")
-            if submitted:
-                if not descripcion.strip():
-                    st.error("La descripción es obligatoria.")
-                else:
-                    pid = next_id(data["Pendientes"])
-                    row = pd.DataFrame([[pid, datetime.now().strftime("%Y-%m-%d"), hotel, depto, tipo, impacto, prioridad, estatus, fecha_comp.strftime("%Y-%m-%d") if fecha_comp else "", descripcion.strip(), "", datetime.now().strftime("%Y-%m-%d %H:%M:%S")]], columns=empty_df("Pendientes").columns)
-                    data["Pendientes"] = pd.concat([data["Pendientes"], row], ignore_index=True)
-                    bit = pd.DataFrame([[pid, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), st.session_state.get("user",""), "Creación", "Incidencia creada.", "", estatus]], columns=empty_df("Bitacora").columns)
-                    data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
-                    save_data(data)
-                    st.success("Incidencia creada correctamente.")
-                    st.session_state["show_create"] = False
-                    clear_cache_and_rerun()
-    dff = apply_filters(data["Pendientes"].copy())
-    render_report_table(data, dff)
-
-def bitacora_page(data):
-    st.subheader("Bitácora general")
-    bit = data["Bitacora"].copy()
-    q = st.text_input("Buscar en bitácora", placeholder="ID, usuario, comentario...")
-    if q:
-        mask = bit.astype(str).apply(lambda r: r.str.lower().str.contains(q.lower(), na=False).any(), axis=1)
-        bit = bit[mask]
-    st.dataframe(bit.sort_values("Fecha", ascending=False), use_container_width=True, hide_index=True)
-
-def usuarios_page(data):
-    st.subheader("Gestión de usuarios")
-    st.caption("Solo disponible para Administrador.")
-    with st.form("new_user"):
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: usuario = st.text_input("Usuario")
-        with c2: nombre = st.text_input("Nombre")
-        with c3: password = st.text_input("Contraseña")
-        with c4:
-            rol = st.selectbox("Rol", ["Administrador", "Auditor"])
-            estado = st.selectbox("Estado", ["Activo", "Inactivo"])
-        if st.form_submit_button("Guardar usuario", type="primary"):
-            if usuario and password and nombre:
-                users = data["Usuarios"].copy()
-                if usuario in users["Usuario"].astype(str).tolist():
-                    idx = users.index[users["Usuario"].astype(str).eq(usuario)][0]
-                    users.loc[idx, ["Password","Nombre","Rol","Estado"]] = [password, nombre, rol, estado]
-                else:
-                    users = pd.concat([users, pd.DataFrame([[usuario,password,nombre,rol,estado]], columns=empty_df("Usuarios").columns)], ignore_index=True)
-                data["Usuarios"] = users
-                save_data(data)
-                st.success("Usuario guardado.")
-                clear_cache_and_rerun()
+if not st.session_state.auth:
+    left, center, right = st.columns([1, 1.1, 1])
+    with center:
+        st.subheader("Inicio de sesión")
+        with st.form("login"):
+            u = st.text_input("Usuario")
+            p = st.text_input("Contraseña", type="password")
+            login = st.form_submit_button("Entrar", use_container_width=True)
+        if login:
+            match = usuarios[
+                (usuarios["Usuario"].astype(str) == u)
+                & (usuarios["Contraseña"].astype(str) == p)
+                & (usuarios["Estado"].astype(str) == "Activo")
+            ]
+            if not match.empty:
+                st.session_state.auth = True
+                st.session_state.user = u
+                st.session_state.role = match.iloc[0]["Rol"]
+                st.rerun()
             else:
-                st.error("Usuario, nombre y contraseña son obligatorios.")
-    st.dataframe(data["Usuarios"].drop(columns=["Password"], errors="ignore"), use_container_width=True, hide_index=True)
+                st.error("Usuario o contraseña incorrectos, o usuario inactivo.")
+        st.caption("Usuarios demo: admin/admin123 | auditor/auditor123")
+    st.stop()
 
-def catalogos_page(data):
-    st.subheader("Catálogos")
-    st.caption("Valores usados en los dropdowns de la app.")
-    cat = data["Catalogos"].copy()
-    edited = st.data_editor(cat, use_container_width=True, hide_index=True, num_rows="dynamic")
-    if st.button("Guardar catálogos", type="primary"):
-        data["Catalogos"] = edited.fillna("")
-        save_data(data)
-        st.success("Catálogos actualizados.")
-        clear_cache_and_rerun()
+# -------------------- SIDEBAR --------------------
+st.sidebar.markdown(f"**Usuario:** {st.session_state.user}")
+st.sidebar.markdown(f"**Rol:** {st.session_state.role}")
+menu_items = ["Incidencias / Pendientes", "Dashboard"]
+if st.session_state.role == "Administrador":
+    menu_items.append("Gestión de Usuarios")
+menu = st.sidebar.radio("Módulos", menu_items)
+if st.sidebar.button("Cerrar sesión", use_container_width=True):
+    st.session_state.auth = False
+    st.session_state.user = None
+    st.session_state.role = None
+    st.rerun()
 
-# =========================
-# Main
-# =========================
-def main():
-    data = cached_load()
-    if not st.session_state.get("logged"):
-        login_view(data)
-        return
-    sidebar_nav()
-    header()
-    page = st.session_state.get("page", "Dashboard")
-    if page == "Dashboard":
-        dashboard_page(data)
-    elif page == "Pendientes":
-        pendientes_page(data)
-    elif page == "Bitácora":
-        bitacora_page(data)
-    elif page == "Usuarios" and st.session_state.get("role") == "Administrador":
-        usuarios_page(data)
-    elif page == "Catálogos" and st.session_state.get("role") == "Administrador":
-        catalogos_page(data)
+pend = data["Pendientes"].copy()
+cat = data["Catalogos"].copy()
+
+# Opciones de catálogos para creación.
+hoteles_cat = list_values(cat, "Hoteles") or ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"]
+departamentos_cat = list_values(cat, "Departamentos") or ["Recepción", "Reservas", "Spa", "A&B", "Contabilidad"]
+tipos_cat = list_values(cat, "Tipos de Incidencia") or ["Error operativo", "Incidencia IT"]
+impactos_cat = list_values(cat, "Impactos") or ["Operativo", "Financiero", "Contable", "Cliente", "Sistema"]
+prioridades_cat = list_values(cat, "Prioridades") or ["Baja", "Media", "Alta", "Crítica"]
+estatuses = list_values(cat, "Estatus") or ["Pendiente", "En proceso", "En espera de respuesta", "Escalado", "Resuelto", "Cerrado"]
+
+# Opciones dinámicas para filtros: salen de la base real de pendientes.
+hoteles_filter = dynamic_values(pend, cat, "Hotel", "Hoteles")
+departamentos_filter = dynamic_values(pend, cat, "Departamento", "Departamentos")
+tipos_filter = dynamic_values(pend, cat, "Tipo de Incidencia", "Tipos de Incidencia")
+impactos_filter = dynamic_values(pend, cat, "Impacto", "Impactos")
+prioridades_filter = dynamic_values(pend, cat, "Prioridad", "Prioridades")
+estatus_filter = dynamic_values(pend, cat, "Estatus", "Estatus")
+
+# -------------------- MODAL BITÁCORA --------------------
+if hasattr(st, "dialog"):
+    @st.dialog("Bitácora del pendiente")
+    def show_log_modal(id_pendiente):
+        bit = data["Bitacora"].copy()
+        bit = bit[bit["ID Pendiente"].astype(str) == str(id_pendiente)]
+        if bit.empty:
+            st.info("Este pendiente todavía no tiene movimientos en bitácora.")
+        else:
+            bit["Fecha"] = bit["Fecha"].apply(fmt_dt)
+            st.dataframe(bit.sort_values("Fecha", ascending=False), use_container_width=True, hide_index=True)
+
+# -------------------- INCIDENCIAS --------------------
+if menu == "Incidencias / Pendientes":
+    st.subheader("Módulo de Incidencias / Pendientes")
+
+    top1, top2, top3, top4 = st.columns(4)
+    abiertos_global = pend[~pend["Estatus"].astype(str).isin(CLOSED_STATUS)] if not pend.empty else pend
+    vencidos_global = abiertos_global[
+        pd.to_datetime(abiertos_global["Fecha Compromiso"], errors="coerce").notna()
+        & (pd.to_datetime(abiertos_global["Fecha Compromiso"], errors="coerce") < pd.Timestamp(date.today()))
+    ] if not abiertos_global.empty else abiertos_global
+    top1.metric("Total", len(pend))
+    top2.metric("Abiertas", len(abiertos_global))
+    top3.metric("Cerradas", len(pend) - len(abiertos_global))
+    top4.metric("Vencidas", len(vencidos_global))
+
+    c_create, c_download = st.columns([1, 3])
+    if c_create.button("+ Crear pendiente", use_container_width=True):
+        st.session_state.show_create = not st.session_state.show_create
+
+    if st.session_state.show_create:
+        with st.container(border=True):
+            st.markdown("### Crear nueva incidencia")
+            with st.form("crear_pendiente", clear_on_submit=False):
+                c1, c2, c3 = st.columns(3)
+                hotel = c1.selectbox("Hotel", hoteles_cat)
+                departamento = c2.selectbox("Departamento", departamentos_cat)
+                tipo = c3.selectbox("Tipo de Incidencia", tipos_cat)
+                c4, c5, c6 = st.columns(3)
+                impacto = c4.selectbox("Impacto", impactos_cat)
+                prioridad = c5.selectbox("Prioridad", prioridades_cat, index=prioridades_cat.index("Media") if "Media" in prioridades_cat else 0)
+                fecha_comp = c6.date_input("Fecha compromiso", value=date.today())
+                titulo = st.text_input("Título / descripción corta")
+                descripcion = st.text_area("Descripción detallada")
+                comentario = st.text_area("Comentario inicial")
+                submitted = st.form_submit_button("Guardar pendiente", use_container_width=True)
+
+            if submitted:
+                if not titulo.strip() and not descripcion.strip():
+                    st.error("Debes colocar al menos un título o una descripción.")
+                else:
+                    new_id = next_id(data["Pendientes"])
+                    new_row = {
+                        "ID": new_id,
+                        "Fecha Creación": datetime.now(),
+                        "Hotel": hotel,
+                        "Departamento": departamento,
+                        "Tipo de Incidencia": tipo,
+                        "Impacto": impacto,
+                        "Prioridad": prioridad,
+                        "Estatus": "Pendiente",
+                        "Fecha Compromiso": pd.Timestamp(fecha_comp),
+                        "Descripción": f"{titulo}\n{descripcion}".strip(),
+                        "Comentario Inicial": comentario,
+                        "Fecha Cierre": pd.NaT,
+                        "Creado Por": st.session_state.user,
+                        "Última Actualización": datetime.now(),
+                    }
+                    data["Pendientes"] = pd.concat([data["Pendientes"], pd.DataFrame([new_row])], ignore_index=True)
+                    add_log(data, new_id, st.session_state.user, "Creación", "", "Pendiente", comentario or descripcion or titulo)
+                    save_workbook_data(data)
+                    st.session_state.show_create = False
+                    st.success(f"Pendiente creado: {new_id}")
+                    st.rerun()
+
+    st.markdown("### Filtros dinámicos")
+    f1, f2, f3, f4 = st.columns(4)
+    fh = f1.multiselect("Hotel", hoteles_filter, placeholder="Todos")
+    fd = f2.multiselect("Departamento", departamentos_filter, placeholder="Todos")
+    ft = f3.multiselect("Tipo de Incidencia", tipos_filter, placeholder="Todos")
+    fe = f4.multiselect("Estatus", status_filter if (status_filter := estatus_filter) else estatuses, placeholder="Todos")
+    f5, f6, f7 = st.columns([1, 1, 2])
+    fp = f5.multiselect("Prioridad", prioridades_filter, placeholder="Todas")
+    fi = f6.multiselect("Impacto", impactos_filter, placeholder="Todos")
+    search = f7.text_input("Buscar", placeholder="Buscar por texto, ID, descripción...")
+
+    filters = {
+        "Hotel": fh,
+        "Departamento": fd,
+        "Tipo de Incidencia": ft,
+        "Estatus": fe,
+        "Prioridad": fp,
+        "Impacto": fi,
+    }
+    filtered = filter_data(pend, filters, search)
+    filtered = filtered.sort_values(by=["Fecha Creación"], ascending=False, na_position="last") if not filtered.empty else filtered
+
+    st.download_button(
+        "Descargar filtrado en Excel",
+        data=excel_download(filtered),
+        file_name="pendientes_filtrados.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=False,
+    )
+
+    st.markdown(f"### Lista de incidencias ({len(filtered)})")
+    if filtered.empty:
+        st.info("No hay pendientes con los filtros seleccionados.")
     else:
-        st.warning("No tienes acceso a este módulo.")
+        for _, row in filtered.iterrows():
+            idp = str(row.get("ID", ""))
+            desc = str(row.get("Descripción", "")).strip()
+            title = desc.split("\n")[0] if desc else "Sin descripción"
+            estado_actual = str(row.get("Estatus", "Pendiente"))
+            prioridad = str(row.get("Prioridad", ""))
 
-if __name__ == "__main__":
-    main()
+            st.markdown('<div class="incident-card">', unsafe_allow_html=True)
+            st.markdown(f'<div class="incident-title">{idp} · {title}</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="incident-meta">Creado: {fmt_dt(row.get("Fecha Creación"))} · Fecha compromiso: {fmt_date(row.get("Fecha Compromiso"))} · Última actualización: {fmt_dt(row.get("Última Actualización"))}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<span class="tag">{row.get("Hotel", "-")}</span>'
+                f'<span class="tag">{row.get("Departamento", "-")}</span>'
+                f'<span class="tag">{row.get("Tipo de Incidencia", "-")}</span>'
+                f'<span class="tag {priority_class(prioridad)}">{prioridad}</span>'
+                f'<span class="tag">{estado_actual}</span>',
+                unsafe_allow_html=True,
+            )
+            if "\n" in desc:
+                with st.expander("Ver descripción completa"):
+                    st.write(desc)
+
+            col_status, col_comment, col_save, col_log = st.columns([1.2, 2.5, .9, .9])
+            current_index = estatuses.index(estado_actual) if estado_actual in estatuses else 0
+            nuevo_estado = col_status.selectbox("Estatus", estatuses, index=current_index, key=f"estado_{idp}", label_visibility="collapsed")
+            comentario_update = col_comment.text_input("Comentario", placeholder="Comentario de actualización", key=f"coment_{idp}", label_visibility="collapsed")
+            if col_save.button("Guardar", key=f"save_{idp}", use_container_width=True):
+                idxs = data["Pendientes"][data["Pendientes"]["ID"].astype(str) == idp].index
+                if len(idxs) == 0:
+                    st.error("No se encontró el pendiente seleccionado.")
+                else:
+                    idx = idxs[0]
+                    estado_anterior = str(data["Pendientes"].loc[idx, "Estatus"])
+                    data["Pendientes"].loc[idx, "Estatus"] = nuevo_estado
+                    data["Pendientes"].loc[idx, "Última Actualización"] = datetime.now()
+                    if nuevo_estado in CLOSED_STATUS:
+                        data["Pendientes"].loc[idx, "Fecha Cierre"] = datetime.now()
+                    elif estado_anterior in CLOSED_STATUS and nuevo_estado not in CLOSED_STATUS:
+                        data["Pendientes"].loc[idx, "Fecha Cierre"] = pd.NaT
+                    add_log(data, idp, st.session_state.user, "Actualización de estatus", estado_anterior, nuevo_estado, comentario_update)
+                    save_workbook_data(data)
+                    st.success(f"{idp} actualizado correctamente.")
+                    st.rerun()
+            if col_log.button("Bitácora", key=f"log_{idp}", use_container_width=True):
+                if hasattr(st, "dialog"):
+                    show_log_modal(idp)
+                else:
+                    st.session_state.log_id = idp
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        if st.session_state.log_id and not hasattr(st, "dialog"):
+            st.markdown("### Bitácora")
+            bit = data["Bitacora"].copy()
+            bit = bit[bit["ID Pendiente"].astype(str) == str(st.session_state.log_id)]
+            if bit.empty:
+                st.info("Este pendiente todavía no tiene movimientos en bitácora.")
+            else:
+                bit["Fecha"] = bit["Fecha"].apply(fmt_dt)
+                st.dataframe(bit, use_container_width=True, hide_index=True)
+
+# -------------------- DASHBOARD --------------------
+elif menu == "Dashboard":
+    st.subheader("Dashboard")
+    if pend.empty:
+        st.info("No hay datos para mostrar.")
+        st.stop()
+
+    st.markdown("### Filtros dinámicos")
+    d1, d2, d3, d4 = st.columns(4)
+    dh = d1.multiselect("Hotel", hoteles_filter, key="dash_hotel")
+    dd = d2.multiselect("Departamento", departamentos_filter, key="dash_depto")
+    de = d3.multiselect("Estatus", estatus_filter, key="dash_status")
+    dt = d4.multiselect("Tipo de Incidencia", tipos_filter, key="dash_tipo")
+    d5, d6 = st.columns(2)
+    dp = d5.multiselect("Prioridad", prioridades_filter, key="dash_prioridad")
+    di = d6.multiselect("Impacto", impactos_filter, key="dash_impacto")
+
+    dash = filter_data(pend, {
+        "Hotel": dh,
+        "Departamento": dd,
+        "Estatus": de,
+        "Tipo de Incidencia": dt,
+        "Prioridad": dp,
+        "Impacto": di,
+    })
+
+    today = pd.Timestamp(date.today())
+    dash_dates = dash.copy()
+    dash_dates["Fecha Compromiso"] = pd.to_datetime(dash_dates["Fecha Compromiso"], errors="coerce")
+    abiertos = dash_dates[~dash_dates["Estatus"].astype(str).isin(CLOSED_STATUS)]
+    vencidos = abiertos[abiertos["Fecha Compromiso"].notna() & (abiertos["Fecha Compromiso"] < today)]
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total incidencias", len(dash))
+    m2.metric("Abiertas", len(abiertos))
+    m3.metric("Cerradas / Resueltas", len(dash) - len(abiertos))
+    m4.metric("Vencidas", len(vencidos))
+
+    if dash.empty:
+        st.warning("No hay información para los filtros seleccionados.")
+    else:
+        c1, c2 = st.columns(2)
+        fig1 = px.histogram(dash, x="Departamento", color="Estatus", title="Incidencias por departamento y estatus", text_auto=True)
+        fig1.update_layout(template="plotly_white")
+        c1.plotly_chart(fig1, use_container_width=True)
+
+        fig2 = px.histogram(dash, x="Tipo de Incidencia", title="Tipos de incidencia más comunes", text_auto=True)
+        fig2.update_layout(template="plotly_white", xaxis_tickangle=-30)
+        c2.plotly_chart(fig2, use_container_width=True)
+
+        c3, c4 = st.columns(2)
+        fig3 = px.histogram(dash, x="Hotel", color="Prioridad", title="Incidencias por hotel y prioridad", text_auto=True)
+        fig3.update_layout(template="plotly_white")
+        c3.plotly_chart(fig3, use_container_width=True)
+
+        temp = dash.copy()
+        temp["Fecha Creación"] = pd.to_datetime(temp["Fecha Creación"], errors="coerce")
+        temp = temp.dropna(subset=["Fecha Creación"])
+        if not temp.empty:
+            temp["Fecha"] = temp["Fecha Creación"].dt.date
+            fig4 = px.histogram(temp, x="Fecha", color="Estatus", title="Evolución por fecha", text_auto=True)
+            fig4.update_layout(template="plotly_white")
+            c4.plotly_chart(fig4, use_container_width=True)
+
+        st.markdown("### Detalle filtrado")
+        preview = dash.copy()
+        for col in ["Fecha Creación", "Fecha Compromiso", "Fecha Cierre", "Última Actualización"]:
+            if col in preview.columns:
+                preview[col] = preview[col].apply(fmt_dt if col in ["Fecha Creación", "Última Actualización"] else fmt_date)
+        st.dataframe(preview, use_container_width=True, hide_index=True)
+
+# -------------------- USUARIOS --------------------
+elif menu == "Gestión de Usuarios":
+    st.subheader("Gestión de Usuarios")
+    st.caption("Solo administradores pueden acceder a este módulo.")
+    users_view = data["Usuarios"].drop(columns=["Contraseña"], errors="ignore")
+    st.dataframe(users_view, use_container_width=True, hide_index=True)
+
+    with st.expander("Crear usuario", expanded=False):
+        with st.form("crear_usuario"):
+            u = st.text_input("Usuario nuevo")
+            n = st.text_input("Nombre")
+            p = st.text_input("Contraseña", type="password")
+            r = st.selectbox("Rol", ["Administrador", "Auditor"])
+            crear = st.form_submit_button("Crear usuario")
+        if crear:
+            if not u or not p:
+                st.error("Usuario y contraseña son obligatorios.")
+            elif u in data["Usuarios"]["Usuario"].astype(str).tolist():
+                st.error("Ese usuario ya existe.")
+            else:
+                row = {"Usuario": u, "Nombre": n, "Contraseña": p, "Rol": r, "Estado": "Activo"}
+                data["Usuarios"] = pd.concat([data["Usuarios"], pd.DataFrame([row])], ignore_index=True)
+                save_workbook_data(data)
+                st.success("Usuario creado correctamente.")
+                st.rerun()
+
+    with st.expander("Activar / desactivar usuario", expanded=False):
+        users = data["Usuarios"]["Usuario"].astype(str).tolist()
+        sel_user = st.selectbox("Usuario", users)
+        estado_actual = data["Usuarios"].loc[data["Usuarios"]["Usuario"].astype(str) == sel_user, "Estado"].iloc[0]
+        estado = st.selectbox("Estado", ["Activo", "Inactivo"], index=0 if estado_actual == "Activo" else 1)
+        if st.button("Actualizar estado"):
+            idx = data["Usuarios"][data["Usuarios"]["Usuario"].astype(str) == sel_user].index[0]
+            data["Usuarios"].loc[idx, "Estado"] = estado
+            save_workbook_data(data)
+            st.success("Estado actualizado.")
+            st.rerun()
