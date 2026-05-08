@@ -45,7 +45,7 @@ hr { margin: .7rem 0 1rem; border-color:var(--border); }
 .kpi-sub {font-size:12.5px;color:#64748b;margin-top:8px;}
 .filter-box {background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin:.2rem 0 .8rem;box-shadow:0 1px 4px rgba(15,23,42,.04);}
 .report-card {background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 5px rgba(15,23,42,.05);overflow:hidden;margin-top:.7rem;}
-.table-head, .table-row {display:grid; grid-template-columns: 105px 94px 86px 130px 150px 86px 140px minmax(220px,1fr) 184px; align-items:center; gap:10px;}
+.table-head, .table-row {display:grid; grid-template-columns: 105px 94px 86px 130px 150px 86px 140px minmax(220px,1fr) 86px; align-items:center; gap:10px;}
 .table-head {background:#f8fbff;border-bottom:1px solid var(--border);font-weight:750;font-size:12.5px;color:#334155;padding:11px 14px;}
 .table-row {padding:9px 14px;border-bottom:1px solid var(--border);font-size:12.5px;color:#0f172a;}
 .table-row:hover {background:#f8fbff;}
@@ -69,7 +69,14 @@ hr { margin: .7rem 0 1rem; border-color:var(--border); }
 .stButton>button:hover {border-color:#1a73e8;color:#1a73e8;background:#f8fbff;}
 div[data-testid="stMetric"] {background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 1px 5px rgba(15,23,42,.05);}
 section[data-testid="stSidebar"] .stButton>button {width:100%; justify-content:flex-start;}
-@media (max-width: 1200px){.table-head,.table-row{grid-template-columns: 90px 85px 80px 115px 125px 75px 120px minmax(170px,1fr) 160px;font-size:11.5px;gap:7px;}.title h1{font-size:22px;}}
+@media (max-width: 1200px){.table-head,.table-row{grid-template-columns: 90px 85px 80px 115px 125px 75px 120px minmax(170px,1fr) 78px;font-size:11.5px;gap:7px;}.title h1{font-size:22px;}}
+
+/* tabla compacta estilo reporte */
+.row-actions {display:flex;align-items:center;justify-content:center;}
+div[data-testid="stPopover"] button {min-width:36px !important; padding:.25rem .45rem !important; border-radius:10px !important;}
+.action-menu-note {font-size:12px;color:#64748b;margin-bottom:6px;}
+.edit-panel {background:#ffffff;border:1px solid var(--border);border-radius:14px;padding:16px;margin:.8rem 0;box-shadow:0 1px 6px rgba(15,23,42,.05);}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -296,7 +303,7 @@ def render_report_table(data, dff):
         st.markdown('</div>', unsafe_allow_html=True)
         return
 
-    for idx, row in dff.reset_index().iterrows():
+    for _, row in dff.reset_index().iterrows():
         original_index = int(row["index"])
         rid = str(row["ID"])
         fecha = safe_date(row["Fecha Creación"])
@@ -304,6 +311,8 @@ def render_report_table(data, dff):
         desc = str(row["Descripción"])
         if len(desc) > 92:
             desc = desc[:89] + "..."
+
+        # Fila visual en formato reporte. Las acciones quedan compactas con tres puntos.
         st.markdown(f"""
         <div class="table-row">
           <div><b>{rid}</b></div>
@@ -314,39 +323,80 @@ def render_report_table(data, dff):
           <div>{badge(row['Prioridad'])}</div>
           <div>{badge(row['Estatus'])}</div>
           <div>{desc}</div>
-          <div></div>
+          <div class="row-actions">⋮</div>
         </div>
         """, unsafe_allow_html=True)
-        # Overlay controls in compact columns right after each visual row
-        c0, c1, c2, c3, c4, c5, c6 = st.columns([7.8, 1.15, .95, .75, .65, .65, .3])
-        with c1:
-            new_status = st.selectbox(" ", estados, index=estados.index(row["Estatus"]) if row["Estatus"] in estados else 0, key=f"status_{rid}", label_visibility="collapsed")
-        with c2:
-            if st.button("Guardar", key=f"save_{rid}"):
-                current = str(data["Pendientes"].loc[original_index, "Estatus"])
-                if new_status != current:
-                    data["Pendientes"].loc[original_index, "Estatus"] = str(new_status)
-                    data["Pendientes"].loc[original_index, "Última Actualización"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    if new_status in ["Resuelto", "Cerrado"] and not str(data["Pendientes"].loc[original_index, "Fecha Cierre"]):
-                        data["Pendientes"].loc[original_index, "Fecha Cierre"] = datetime.now().strftime("%Y-%m-%d")
-                    bit = pd.DataFrame([[rid, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), st.session_state.get("user",""), "Cambio de estatus", "Actualización realizada desde el reporte.", current, new_status]], columns=empty_df("Bitacora").columns)
+
+        # Popover real de acciones alineado debajo del área de acciones, sin agrandar la fila.
+        spacer, action_col = st.columns([9.2, .8])
+        with action_col:
+            with st.popover("⋮", use_container_width=True):
+                st.markdown('<div class="action-menu-note">Acciones</div>', unsafe_allow_html=True)
+                if st.button("Editar", key=f"edit_{rid}", use_container_width=True):
+                    st.session_state["edit_id"] = rid
+                    st.session_state["selected_id"] = rid
+                    st.session_state["selected_idx"] = original_index
+                    st.rerun()
+                if st.button("Bitácora", key=f"bit_{rid}", use_container_width=True):
+                    st.session_state["show_bitacora_id"] = rid
+                    st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Panel compacto de edición. Solo aparece cuando se presiona Acciones > Editar.
+    edit_id = st.session_state.get("edit_id")
+    if edit_id:
+        df = data["Pendientes"]
+        hit = df[df["ID"].astype(str) == edit_id]
+        if not hit.empty:
+            idx = hit.index[0]
+            row = hit.iloc[0]
+            st.markdown(f'<div class="edit-panel"><b>Editar incidencia {edit_id}</b></div>', unsafe_allow_html=True)
+            with st.form(f"form_edit_{edit_id}"):
+                c1, c2 = st.columns([.35, .65])
+                with c1:
+                    current_status = str(row["Estatus"])
+                    pos = estados.index(current_status) if current_status in estados else 0
+                    nuevo_estatus = st.selectbox("Nuevo estatus", estados, index=pos)
+                with c2:
+                    comentario = st.text_area("Comentario de actualización", placeholder="Agrega el comentario de seguimiento...", height=86)
+                b1, b2 = st.columns([.22, .78])
+                with b1:
+                    guardar = st.form_submit_button("Guardar", type="primary", use_container_width=True)
+                with b2:
+                    cancelar = st.form_submit_button("Cancelar", use_container_width=False)
+
+                if guardar:
+                    anterior = str(data["Pendientes"].loc[idx, "Estatus"])
+                    data["Pendientes"].loc[idx, "Estatus"] = str(nuevo_estatus)
+                    data["Pendientes"].loc[idx, "Última Actualización"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    if nuevo_estatus in ["Resuelto", "Cerrado"] and not str(data["Pendientes"].loc[idx, "Fecha Cierre"]):
+                        data["Pendientes"].loc[idx, "Fecha Cierre"] = datetime.now().strftime("%Y-%m-%d")
+                    accion = "Cambio de estatus" if nuevo_estatus != anterior else "Comentario"
+                    texto = comentario.strip() if comentario.strip() else "Actualización registrada desde el menú de acciones."
+                    bit = pd.DataFrame([[edit_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), st.session_state.get("user",""), accion, texto, anterior, nuevo_estatus]], columns=empty_df("Bitacora").columns)
                     data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
                     save_data(data)
-                    st.success("Estatus actualizado.")
+                    st.session_state.pop("edit_id", None)
+                    st.success("Incidencia actualizada correctamente.")
                     clear_cache_and_rerun()
-                else:
-                    st.info("No hubo cambios de estatus.")
-        with c3:
-            if st.button("Bitácora", key=f"bit_{rid}"):
-                st.session_state["selected_id"] = rid
-                st.session_state["selected_idx"] = original_index
-                st.rerun()
-        with c4:
-            if st.button("Ver", key=f"ver_{rid}"):
-                st.session_state["selected_id"] = rid
-                st.session_state["selected_idx"] = original_index
-                st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+                if cancelar:
+                    st.session_state.pop("edit_id", None)
+                    st.rerun()
+
+    # Panel de bitácora. Solo aparece cuando se presiona Acciones > Bitácora.
+    bit_id = st.session_state.get("show_bitacora_id")
+    if bit_id:
+        bit = data["Bitacora"]
+        bit = bit[bit["ID Pendiente"].astype(str) == bit_id].copy().sort_values("Fecha", ascending=False)
+        st.markdown(f'<div class="edit-panel"><b>Bitácora de {bit_id}</b></div>', unsafe_allow_html=True)
+        if bit.empty:
+            st.info("Esta incidencia todavía no tiene movimientos registrados.")
+        else:
+            st.dataframe(bit, use_container_width=True, hide_index=True)
+        if st.button("Cerrar bitácora", key=f"close_bit_{bit_id}"):
+            st.session_state.pop("show_bitacora_id", None)
+            st.rerun()
 
 def render_detail_panel(data):
     selected_id = st.session_state.get("selected_id")
@@ -441,7 +491,6 @@ def dashboard_page(data):
     kpi_cards(df)
     dff = apply_filters(df)
     render_report_table(data, dff)
-    render_detail_panel(data)
     st.markdown("<br>", unsafe_allow_html=True)
     g1, g2 = st.columns(2)
     with g1:
@@ -499,7 +548,6 @@ def pendientes_page(data):
                     clear_cache_and_rerun()
     dff = apply_filters(data["Pendientes"].copy())
     render_report_table(data, dff)
-    render_detail_panel(data)
 
 def bitacora_page(data):
     st.subheader("Bitácora general")
