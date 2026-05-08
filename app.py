@@ -752,11 +752,20 @@ def usuarios_page(data):
 
     users = data["Usuarios"].copy()
 
-    st.markdown("""
-    <div class="table-head" style="grid-template-columns: 1fr 1.4fr 1fr 1fr 180px;">
-      <div>Usuario</div><div>Nombre</div><div>Rol</div><div>Estado</div><div>Acciones</div>
-    </div>
-    """, unsafe_allow_html=True)
+h1, h2, h3, h4, h5 = st.columns([1, 1.4, 1, 1, 1.1])
+
+with h1:
+    st.markdown("**Usuario**")
+with h2:
+    st.markdown("**Nombre**")
+with h3:
+    st.markdown("**Rol**")
+with h4:
+    st.markdown("**Estado**")
+with h5:
+    st.markdown("**Acciones**")
+
+st.markdown("---")
 
     for idx, row in users.iterrows():
         usuario_actual = str(row["Usuario"])
