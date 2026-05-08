@@ -714,35 +714,58 @@ def usuarios_page(data):
     st.subheader("Gestión de usuarios")
     st.caption("Solo disponible para Administrador.")
 
-    with st.form("new_user"):
-        c1, c2, c3, c4, c5 = st.columns([1,1,1,1,1])
+    st.markdown("### Crear usuario")
+
+    with st.form("crear_usuario", clear_on_submit=True):
+        c1, c2, c3, c4 = st.columns(4)
+
         with c1:
             usuario = st.text_input("Usuario")
         with c2:
             nombre = st.text_input("Nombre")
         with c3:
-            password = st.text_input("Contraseña")
+            password = st.text_input("Contraseña", type="password")
         with c4:
             rol = st.selectbox("Rol", ["Administrador", "Auditor"])
-        with c5:
             estado = st.selectbox("Estado", ["Activo", "Inactivo"])
 
-        if st.form_submit_button("Guardar usuario", type="primary"):
-            if usuario and password and nombre:
-                users = data["Usuarios"].copy()
-                if usuario in users["Usuario"].astype(str).tolist():
-                    idx = users.index[users["Usuario"].astype(str).eq(usuario)][0]
-                    users.loc[idx, ["Password","Nombre","Rol","Estado"]] = [password, nombre, rol, estado]
-                else:
-                    users = pd.concat([users, pd.DataFrame([[usuario,password,nombre,rol,estado]], columns=empty_df("Usuarios").columns)], ignore_index=True)
-                data["Usuarios"] = users
-                save_data(data)
-                st.success("Usuario guardado.")
-                clear_cache_and_rerun()
-            else:
-                st.error("Usuario, nombre y contraseña son obligatorios.")
+        guardar = st.form_submit_button("Crear usuario", type="primary")
 
-    st.dataframe(data["Usuarios"].drop(columns=["Password"], errors="ignore"), use_container_width=True, hide_index=True)
+        if guardar:
+            if not usuario or not nombre or not password:
+                st.error("Usuario, nombre y contraseña son obligatorios.")
+            else:
+                users = data["Usuarios"].copy()
+
+                if usuario in users["Usuario"].astype(str).tolist():
+                    st.error("Este usuario ya existe. Edítalo desde la tabla inferior.")
+                else:
+                    nuevo = pd.DataFrame(
+                        [[usuario, password, nombre, rol, estado]],
+                        columns=empty_df("Usuarios").columns
+                    )
+                    data["Usuarios"] = pd.concat([users, nuevo], ignore_index=True)
+                    save_data(data)
+                    st.success("Usuario creado correctamente.")
+                    clear_cache_and_rerun()
+
+    st.markdown("---")
+    st.markdown("### Editar usuarios existentes")
+    st.caption("Puedes modificar nombre, contraseña, rol y estado directamente en la tabla.")
+
+    edited_users = st.data_editor(
+        data["Usuarios"],
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        disabled=["Usuario"]
+    )
+
+    if st.button("Guardar cambios de usuarios", type="primary"):
+        data["Usuarios"] = edited_users.fillna("")
+        save_data(data)
+        st.success("Usuarios actualizados correctamente.")
+        clear_cache_and_rerun()
 
 def catalogos_page(data):
     st.subheader("Catálogos")
