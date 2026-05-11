@@ -6,9 +6,31 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+import gspread
+from google.oauth2.service_account import Credentials
+
 
 APP_TITLE = "Auditoría Pendientes"
 EXCEL_FILE = "auditoria_pendientes.xlsx"
+
+# =========================
+# GOOGLE SHEETS
+# =========================
+def conectar_google_sheets():
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    creds = Credentials.from_service_account_info(
+        st.secrets["google_service_account"],
+        scopes=scope
+    )
+
+    client = gspread.authorize(creds)
+    return client.open("auditoria_pendientes")
+
+
 SHEETS = ["Pendientes", "Bitacora", "Usuarios", "Catalogos"]
 
 PENDIENTES_COLUMNS = [
@@ -445,25 +467,54 @@ def migrate_columns(df, sheet_name):
 
 
 def load_data():
-    ensure_excel()
-    try:
-        xls = pd.read_excel(EXCEL_FILE, sheet_name=None, engine="openpyxl")
-    except Exception:
-        xls = seed_data()
-        save_data(xls)
-
+    spreadsheet = conectar_google_sheets()
     data = {}
-    for sheet in SHEETS:
-        data[sheet] = migrate_columns(xls.get(sheet, empty_df(sheet)).copy(), sheet)
+
+    for sheet_name in SHEETS:
+        try:
+            worksheet = spreadsheet.worksheet(sheet_name)
+            records = worksheet.get_all_records()
+            df = pd.DataFrame(records) if records else empty_df(sheet_name)
+
+        except Exception:
+            worksheet = spreadsheet.add_worksheet(
+                title=sheet_name,
+                rows=1000,
+                cols=50
+            )
+
+            seed = seed_data()
+            df = seed.get(sheet_name, empty_df(sheet_name))
+
+            worksheet.update(
+                [df.columns.values.tolist()] + df.fillna("").values.tolist()
+            )
+
+        data[sheet_name] = migrate_columns(df.copy(), sheet_name)
+
     return data
 
 
 def save_data(data):
-    with pd.ExcelWriter(EXCEL_FILE, engine="openpyxl", mode="w") as writer:
-        for sheet in SHEETS:
-            df = data.get(sheet, empty_df(sheet)).copy().fillna("")
-            df = migrate_columns(df, sheet)
-            df.to_excel(writer, sheet_name=sheet, index=False)
+    spreadsheet = conectar_google_sheets()
+
+    for sheet_name in SHEETS:
+        df = data.get(sheet_name, empty_df(sheet_name)).copy().fillna("")
+        df = migrate_columns(df, sheet_name)
+
+        try:
+            worksheet = spreadsheet.worksheet(sheet_name)
+        except Exception:
+            worksheet = spreadsheet.add_worksheet(
+                title=sheet_name,
+                rows=1000,
+                cols=50
+            )
+
+        worksheet.clear()
+        worksheet.update(
+            [df.columns.values.tolist()] + df.values.tolist()
+        )
 
 
 def clear_cache_and_rerun():
