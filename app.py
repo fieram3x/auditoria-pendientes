@@ -89,7 +89,6 @@ st.markdown(
 }
 
 .stDeployButton,
-[data-testid="stToolbar"],
 [data-testid="stDecoration"],
 
 .app-shell {
