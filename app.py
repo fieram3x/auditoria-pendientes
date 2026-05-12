@@ -75,17 +75,7 @@ st.markdown(
   --danger:#ef4444;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root{
-    --bg:#0f172a;
-    --card:#111827;
-    --border:#334155;
-    --text:#e5e7eb;
-    --muted:#94a3b8;
-  }
-}
-
-.stApp { color: var(--text); }
+.stApp { background: var(--bg); color: var(--text); }
 
 .block-container {
     padding-top: 1.1rem;
@@ -100,6 +90,16 @@ st.markdown(
 
 [data-testid="stSidebar"] * {
     color:#0f172a;
+}
+
+.stDeployButton,
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+#MainMenu,
+footer,
+header {
+    visibility: hidden !important;
+    display: none !important;
 }
 
 .app-header {

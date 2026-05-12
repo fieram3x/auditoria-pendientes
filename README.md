@@ -1,3 +1,3 @@
 # Auditoría Pendientes
 
-Versión con menú nativo de Streamlit habilitado para cambiar tema desde los tres puntos.
+Versión igual a la anterior, solo habilitando el menú nativo de Streamlit.
