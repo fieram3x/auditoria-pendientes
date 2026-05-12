@@ -11,7 +11,25 @@ from google.oauth2.service_account import Credentials
 
 
 APP_TITLE = "Auditoría Pendientes"
-SPREADSHEET_NAME = "auditoria_pendientes"
+EXCEL_FILE = "auditoria_pendientes.xlsx"
+
+# =========================
+# GOOGLE SHEETS
+# =========================
+def conectar_google_sheets():
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    creds = Credentials.from_service_account_info(
+        st.secrets["google_service_account"],
+        scopes=scope
+    )
+
+    client = gspread.authorize(creds)
+    return client.open("auditoria_pendientes")
+
 
 SHEETS = ["Pendientes", "Bitacora", "Usuarios", "Catalogos"]
 
@@ -20,12 +38,10 @@ PENDIENTES_COLUMNS = [
     "Impacto", "Prioridad", "Estatus", "Fecha Compromiso", "Descripción",
     "Fecha Cierre", "Última Actualización"
 ]
-
 BITACORA_COLUMNS = [
     "ID Pendiente", "Fecha", "Usuario", "Acción", "Comentario",
     "Estado Anterior", "Estado Nuevo"
 ]
-
 USUARIOS_COLUMNS = ["Usuario", "Password", "Nombre", "Rol", "Estado"]
 CATALOGOS_COLUMNS = ["Categoria", "Valor"]
 
@@ -40,71 +56,50 @@ st.set_page_config(
 )
 
 
-# ==========================================================
-# ESTILO VISUAL - TEMA CLARO CORPORATIVO
-# ==========================================================
+# =========================
+# ESTILOS
+# =========================
 st.markdown(
     """
 <style>
 :root{
-    --primary:#2563eb;
-    --primary-2:#1d4ed8;
-    --primary-soft:#eff6ff;
-    --bg:#f5f8fc;
-    --surface:#ffffff;
-    --surface-2:#f8fbff;
-    --border:#e5edf7;
-    --border-2:#d7e2f0;
-    --text:#0f172a;
-    --muted:#64748b;
-    --muted-2:#94a3b8;
-    --green:#16a34a;
-    --orange:#d97706;
-    --red:#dc2626;
-    --purple:#7c3aed;
-    --shadow:0 8px 24px rgba(15,23,42,.06);
+  --primary:#1a73e8;
+  --primary-dark:#0b57d0;
+  --bg:#f7faff;
+  --card:#ffffff;
+  --border:#e4eaf3;
+  --text:#0f172a;
+  --muted:#64748b;
+  --success:#16a34a;
+  --warn:#f59e0b;
+  --danger:#ef4444;
 }
 
-.stApp {
-    background:
-        radial-gradient(circle at top left, rgba(37,99,235,.08), transparent 30%),
-        var(--bg);
-    color: var(--text);
+@media (prefers-color-scheme: dark) {
+  :root{
+    --bg:#0f172a;
+    --card:#111827;
+    --border:#334155;
+    --text:#e5e7eb;
+    --muted:#94a3b8;
+  }
 }
+
+.stApp { color: var(--text); }
 
 .block-container {
-    padding-top: 1.15rem;
+    padding-top: 1.1rem;
     padding-bottom: 2rem;
-    max-width: 1520px;
+    max-width: 1500px;
 }
 
 [data-testid="stSidebar"] {
     background:#ffffff;
     border-right:1px solid var(--border);
-    box-shadow: 6px 0 20px rgba(15,23,42,.025);
 }
 
 [data-testid="stSidebar"] * {
     color:#0f172a;
-}
-
-.stDeployButton,
-[data-testid="stToolbar"],
-[data-testid="stDecoration"],
-#MainMenu,
-footer,
-header {
-    visibility: hidden !important;
-    display: none !important;
-}
-
-.app-shell {
-    background:rgba(255,255,255,.72);
-    border:1px solid rgba(229,237,247,.9);
-    border-radius:22px;
-    padding:18px 20px;
-    box-shadow:var(--shadow);
-    margin-bottom:16px;
 }
 
 .app-header {
@@ -112,25 +107,26 @@ header {
     align-items:center;
     justify-content:space-between;
     gap:1rem;
+    margin-bottom:.9rem;
 }
 
 .brand {
     display:flex;
     align-items:center;
-    gap:.85rem;
+    gap:.8rem;
 }
 
 .logo {
-    width:46px;
-    height:46px;
-    border-radius:15px;
-    background:linear-gradient(135deg,#2563eb,#60a5fa);
+    width:44px;
+    height:44px;
+    border-radius:14px;
+    background:linear-gradient(135deg,#1a73e8,#67a3ff);
     display:flex;
     align-items:center;
     justify-content:center;
     color:white;
     font-size:24px;
-    box-shadow:0 10px 22px rgba(37,99,235,.24);
+    box-shadow:0 8px 18px rgba(26,115,232,.18);
 }
 
 .title h1 {
@@ -138,12 +134,11 @@ header {
     margin:0;
     line-height:1.05;
     color:#0f172a;
-    font-weight:900;
-    letter-spacing:-.3px;
+    font-weight:850;
 }
 
 .title p {
-    font-size:13.5px;
+    font-size:14px;
     margin:4px 0 0;
     color:#64748b;
 }
@@ -152,119 +147,81 @@ header {
     background:#fff;
     border:1px solid var(--border);
     border-radius:999px;
-    padding:8px 14px;
+    padding:7px 12px;
     color:#334155;
-    box-shadow:0 1px 5px rgba(15,23,42,.04);
+    box-shadow:0 1px 4px rgba(15,23,42,.04);
     font-size:13px;
-    white-space:nowrap;
 }
 
 .login-card {
     max-width:500px;
     margin:6vh auto 0;
     background:#fff;
-    border:1px solid var(--border);
-    border-radius:24px;
-    padding:30px;
-    box-shadow:0 18px 45px rgba(15,23,42,.09);
-}
-
-.section-title {
-    display:flex;
-    align-items:flex-end;
-    justify-content:space-between;
-    gap:1rem;
-    margin: 2px 0 10px;
-}
-
-.section-title h2 {
-    margin:0;
-    font-size:22px;
-    font-weight:900;
-    color:#0f172a;
-    letter-spacing:-.2px;
-}
-
-.section-title p {
-    margin:4px 0 0;
-    color:#64748b;
-    font-size:13px;
+    border:1px solid #e4eaf3;
+    border-radius:18px;
+    padding:28px;
+    box-shadow:0 18px 45px rgba(15,23,42,.08);
 }
 
 .kpi-card {
     background:#fff;
     border:1px solid var(--border);
-    border-radius:18px;
-    padding:16px 18px;
-    box-shadow:0 3px 12px rgba(15,23,42,.045);
-    min-height:104px;
+    border-radius:14px;
+    padding:18px;
+    box-shadow:0 1px 5px rgba(15,23,42,.05);
+    min-height:105px;
 }
 
 .kpi-label {
-    font-size:13px;
-    color:#64748b;
+    font-size:14px;
+    color:#0f172a;
     font-weight:700;
     margin-bottom:8px;
 }
 
 .kpi-value {
-    font-size:29px;
-    font-weight:900;
+    font-size:28px;
+    font-weight:850;
     color:#0f172a;
     line-height:1;
 }
 
 .kpi-sub {
-    font-size:12px;
-    color:#94a3b8;
+    font-size:12.5px;
+    color:#64748b;
     margin-top:8px;
-}
-
-.kpi-icon {
-    width:38px;
-    height:38px;
-    border-radius:13px;
-    background:#eff6ff;
-    color:#2563eb;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:20px;
 }
 
 .filter-box {
     background:#fff;
     border:1px solid var(--border);
-    border-radius:18px;
-    padding:16px 16px 12px;
+    border-radius:14px;
+    padding:14px 16px;
     margin:.2rem 0 .8rem;
-    box-shadow:0 3px 14px rgba(15,23,42,.04);
+    box-shadow:0 1px 4px rgba(15,23,42,.04);
 }
 
 .report-card {
     background:#fff;
     border:1px solid var(--border);
-    border-radius:18px;
-    box-shadow:0 3px 14px rgba(15,23,42,.045);
+    border-radius:14px;
+    box-shadow:0 1px 5px rgba(15,23,42,.05);
     overflow:hidden;
-    margin-top:.75rem;
+    margin-top:.7rem;
 }
 
 .table-header {
-    background:linear-gradient(180deg,#f8fbff,#f4f8ff);
+    background:#f8fbff;
     border-bottom:1px solid var(--border);
-    font-weight:900;
-    font-size:12px;
+    font-weight:800;
+    font-size:12.5px;
     color:#334155;
-    padding:11px 13px;
-    text-transform:uppercase;
-    letter-spacing:.25px;
+    padding:11px 12px;
 }
 
 .table-row-wrap {
-    border-bottom:1px solid #eef3f9;
-    padding:8px 13px;
-    transition: all .14s ease-in-out;
+    border-bottom:1px solid var(--border);
+    padding:7px 12px;
 }
 
 .table-row-wrap:hover {
@@ -274,7 +231,6 @@ header {
 .cell-text {
     font-size:12.5px;
     color:#0f172a;
-    line-height:1.25;
 }
 
 .cell-muted {
@@ -286,10 +242,10 @@ header {
     display:inline-flex;
     align-items:center;
     justify-content:center;
-    border-radius:999px;
-    padding:5px 9px;
-    font-size:11.5px;
-    font-weight:850;
+    border-radius:8px;
+    padding:4px 8px;
+    font-size:12px;
+    font-weight:800;
     line-height:1;
     border:1px solid transparent;
     white-space:nowrap;
@@ -351,17 +307,16 @@ header {
 }
 
 .detail-card,
-.edit-panel,
-.user-panel {
+.edit-panel {
     background:#fff;
     border:1px solid var(--border);
-    border-radius:18px;
+    border-radius:14px;
     padding:16px;
-    box-shadow:0 3px 14px rgba(15,23,42,.045);
+    box-shadow:0 1px 5px rgba(15,23,42,.05);
 }
 
 .detail-title {
-    font-weight:900;
+    font-weight:850;
     color:#0f172a;
     margin-bottom:12px;
 }
@@ -369,39 +324,24 @@ header {
 .timeline-card {
     background:white;
     border:1px solid #e4eaf3;
-    border-radius:14px;
+    border-radius:12px;
     padding:14px;
     margin-bottom:10px;
 }
 
-.user-row {
-    border:1px solid var(--border);
-    background:#fff;
-    border-radius:14px;
-    padding:10px 12px;
-    margin-bottom:9px;
-    box-shadow:0 1px 5px rgba(15,23,42,.03);
-}
-
 .stButton>button {
-    border-radius:10px;
-    border:1px solid var(--border-2);
+    border-radius:9px;
+    border:1px solid var(--border);
     background:#ffffff;
     color:#0f172a;
-    font-weight:750;
-    padding:.38rem .65rem;
+    font-weight:650;
+    padding:.36rem .62rem;
 }
 
 .stButton>button:hover {
-    border-color:#2563eb;
-    color:#2563eb;
+    border-color:#1a73e8;
+    color:#1a73e8;
     background:#f8fbff;
-}
-
-.stButton>button[kind="primary"] {
-    border-color:#2563eb !important;
-    background:#2563eb !important;
-    color:white !important;
 }
 
 div[data-testid="stPopover"] button {
@@ -416,13 +356,12 @@ div[data-testid="stPopover"] button {
 }
 
 hr {
-    margin: .8rem 0 1rem;
+    margin: .7rem 0 1rem;
     border-color:var(--border);
 }
 
 @media (max-width: 1200px){
     .title h1{font-size:22px;}
-    .user-pill{display:none;}
 }
 </style>
 """,
@@ -430,9 +369,9 @@ hr {
 )
 
 
-# ==========================================================
+# =========================
 # UTILIDADES
-# ==========================================================
+# =========================
 def normalize_text(value):
     if pd.isna(value) or value is None:
         return ""
@@ -502,22 +441,9 @@ def seed_data():
     }
 
 
-# ==========================================================
-# GOOGLE SHEETS
-# ==========================================================
-def conectar_google_sheets():
-    scope = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-
-    creds = Credentials.from_service_account_info(
-        st.secrets["google_service_account"],
-        scopes=scope
-    )
-
-    client = gspread.authorize(creds)
-    return client.open(SPREADSHEET_NAME)
+def ensure_excel():
+    if not os.path.exists(EXCEL_FILE):
+        save_data(seed_data())
 
 
 def migrate_columns(df, sheet_name):
@@ -528,18 +454,13 @@ def migrate_columns(df, sheet_name):
             df = df.rename(columns={"Activo": "Estado"})
 
     target = empty_df(sheet_name)
-
     for col in target.columns:
         if col not in df.columns:
             df[col] = ""
-
     df = df[list(target.columns)].fillna("")
 
     if sheet_name == "Usuarios":
-        df["Estado"] = df["Estado"].replace({
-            "Sí": "Activo", "Si": "Activo", "No": "Inactivo",
-            True: "Activo", False: "Inactivo"
-        })
+        df["Estado"] = df["Estado"].replace({"Sí": "Activo", "Si": "Activo", "No": "Inactivo", True: "Activo", False: "Inactivo"})
         df.loc[df["Estado"].astype(str).str.strip() == "", "Estado"] = "Activo"
 
     return df
@@ -548,8 +469,6 @@ def migrate_columns(df, sheet_name):
 def load_data():
     spreadsheet = conectar_google_sheets()
     data = {}
-
-    seed = seed_data()
 
     for sheet_name in SHEETS:
         try:
@@ -564,6 +483,7 @@ def load_data():
                 cols=50
             )
 
+            seed = seed_data()
             df = seed.get(sheet_name, empty_df(sheet_name))
 
             worksheet.update(
@@ -620,7 +540,6 @@ def get_catalog(data, category, fallback=None):
 def next_id(df):
     year = datetime.now().year
     nums = []
-
     for x in df.get("ID", []):
         s = str(x)
         if s.startswith(f"INC-{year}-"):
@@ -628,18 +547,13 @@ def next_id(df):
                 nums.append(int(s.split("-")[-1]))
             except Exception:
                 pass
-
     return f"INC-{year}-{(max(nums) + 1 if nums else 1):03d}"
 
 
 def dynamic_options(df, col):
     if col not in df.columns:
         return ["Todos"]
-
-    vals = sorted([
-        v for v in df[col].astype(str).str.strip().unique().tolist()
-        if v and v.lower() != "nan"
-    ])
+    vals = sorted([v for v in df[col].astype(str).str.strip().unique().tolist() if v and v.lower() != "nan"])
     return ["Todos"] + vals
 
 
@@ -657,9 +571,9 @@ def close_status_if_needed(data, idx, new_status):
         data["Pendientes"].loc[idx, "Fecha Cierre"] = ""
 
 
-# ==========================================================
+# =========================
 # LOGIN
-# ==========================================================
+# =========================
 def login_view(data):
     st.markdown(
         f"""
@@ -677,11 +591,10 @@ def login_view(data):
     )
 
     c1, c2, c3 = st.columns([1.1, 1, 1.1])
-
     with c2:
-        st.markdown("### Inicio de sesión")
-        usuario = st.text_input("Usuario", placeholder="Ingrese su usuario")
-        password = st.text_input("Contraseña", type="password", placeholder="Ingrese su contraseña")
+        st.markdown("## Inicio de sesión")
+        usuario = st.text_input("Usuario")
+        password = st.text_input("Contraseña", type="password")
 
         if st.button("Entrar", type="primary", use_container_width=True):
             users = data["Usuarios"].copy()
@@ -702,23 +615,21 @@ def login_view(data):
                 st.rerun()
 
 
-# ==========================================================
-# HEADER / NAVEGACIÓN
-# ==========================================================
+# =========================
+# HEADER / SIDEBAR
+# =========================
 def header():
     st.markdown(
         f"""
-        <div class="app-shell">
-            <div class="app-header">
-                <div class="brand">
-                    <div class="logo">🛡️</div>
-                    <div class="title">
-                        <h1>{APP_TITLE}</h1>
-                        <p>Monitor operativo de incidencias y pendientes de auditoría</p>
-                    </div>
+        <div class="app-header">
+            <div class="brand">
+                <div class="logo">🛡️</div>
+                <div class="title">
+                    <h1>{APP_TITLE}</h1>
+                    <p>Control y seguimiento de incidencias</p>
                 </div>
-                <div class="user-pill">👤 {st.session_state.get("name", "Usuario")} · {st.session_state.get("role", "")}</div>
             </div>
+            <div class="user-pill">👤 {st.session_state.get("name", "Usuario")} · {st.session_state.get("role", "")}</div>
         </div>
         """,
         unsafe_allow_html=True
@@ -726,28 +637,18 @@ def header():
 
 
 def sidebar_nav():
-    st.sidebar.markdown("### 🛡️ Auditoría")
-    st.sidebar.caption("Panel de control")
+    st.sidebar.markdown("### Menú")
 
     if "page" not in st.session_state:
         st.session_state.page = "Dashboard"
 
     pages = ["Dashboard", "Pendientes", "Bitácora"]
-
     if st.session_state.get("role") == "Administrador":
         pages += ["Usuarios", "Catálogos"]
 
     for page in pages:
-        icon = {
-            "Dashboard": "📊",
-            "Pendientes": "📋",
-            "Bitácora": "🧾",
-            "Usuarios": "👥",
-            "Catálogos": "⚙️",
-        }.get(page, "•")
-
         if st.sidebar.button(
-            f"{icon} {page}",
+            page,
             use_container_width=True,
             type="primary" if st.session_state.page == page else "secondary"
         ):
@@ -755,45 +656,19 @@ def sidebar_nav():
             st.rerun()
 
     st.sidebar.markdown("---")
-    st.sidebar.caption(f"Usuario: {st.session_state.get('user', '')}")
-
     if st.sidebar.button("Cerrar sesión", use_container_width=True):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
 
 
-def page_title(title, subtitle="", button_label=None, button_key=None):
-    left, right = st.columns([1, .25])
-
-    with left:
-        st.markdown(
-            f"""
-            <div class="section-title">
-                <div>
-                    <h2>{title}</h2>
-                    <p>{subtitle}</p>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    if button_label and button_key:
-        with right:
-            clicked = st.button(button_label, type="primary", use_container_width=True, key=button_key)
-            return clicked
-
-    return False
-
-
-# ==========================================================
+# =========================
 # FILTROS
-# ==========================================================
+# =========================
 def apply_filters(df):
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
 
-    f1, f2, f3, f4, f5, f6 = st.columns([1.05, 1.15, 1.25, .9, 1, 1.25])
+    f1, f2, f3, f4, f5, f6 = st.columns([1.1, 1.1, 1.25, 1, 1, 1.25])
 
     with f1:
         hotel = st.selectbox("Hotel", dynamic_options(df, "Hotel"), key="f_hotel")
@@ -806,7 +681,7 @@ def apply_filters(df):
     with f5:
         estatus = st.selectbox("Estatus", dynamic_options(df, "Estatus"), key="f_estatus")
     with f6:
-        texto = st.text_input("Buscar", placeholder="ID, descripción, comentario...", key="f_texto")
+        texto = st.text_input("Buscar", placeholder="ID, descripción, tipo...", key="f_texto")
 
     dff = df.copy()
 
@@ -822,10 +697,7 @@ def apply_filters(df):
 
     if texto:
         q = texto.lower().strip()
-        mask = dff.astype(str).apply(
-            lambda r: r.str.lower().str.contains(q, na=False).any(),
-            axis=1
-        )
+        mask = dff.astype(str).apply(lambda r: r.str.lower().str.contains(q, na=False).any(), axis=1)
         dff = dff[mask]
 
     b1, b2, b3 = st.columns([.8, .9, 4])
@@ -854,9 +726,9 @@ def apply_filters(df):
     return dff
 
 
-# ==========================================================
-# TABLA DE INCIDENCIAS
-# ==========================================================
+# =========================
+# TABLA / ACCIONES
+# =========================
 def render_report_table(data, dff):
     estados = get_catalog(
         data,
@@ -867,10 +739,10 @@ def render_report_table(data, dff):
     st.markdown('<div class="report-card">', unsafe_allow_html=True)
     st.markdown('<div class="table-header">', unsafe_allow_html=True)
 
-    h = st.columns([1.05, .9, .75, 1.15, 1.4, .85, 1.15, 2.2, .52])
+    h = st.columns([1.15, .95, .85, 1.25, 1.45, .85, 1.18, 2.15, .55])
     for col, title in zip(
         h,
-        ["ID", "Fecha", "Hotel", "Departamento", "Tipo", "Prioridad", "Estatus", "Descripción", "Acciones"]
+        ["ID", "Fecha", "Hotel", "Departamento", "Tipo de Incidencia", "Prioridad", "Estatus", "Descripción", "Acciones"]
     ):
         with col:
             st.markdown(title)
@@ -886,7 +758,7 @@ def render_report_table(data, dff):
         idx = int(row["index"])
         rid = str(row["ID"])
         desc = str(row["Descripción"])
-        desc_short = desc if len(desc) <= 105 else desc[:102] + "..."
+        desc_short = desc if len(desc) <= 100 else desc[:97] + "..."
 
         hotel_short = (
             str(row["Hotel"])
@@ -898,7 +770,7 @@ def render_report_table(data, dff):
         )
 
         st.markdown('<div class="table-row-wrap">', unsafe_allow_html=True)
-        c = st.columns([1.05, .9, .75, 1.15, 1.4, .85, 1.15, 2.2, .52])
+        c = st.columns([1.15, .95, .85, 1.25, 1.45, .85, 1.18, 2.15, .55])
 
         with c[0]:
             st.markdown(f'<div class="cell-text"><b>{rid}</b></div>', unsafe_allow_html=True)
@@ -956,7 +828,7 @@ def render_edit_panel(data, estados):
     st.markdown(
         f"""
         <div class="edit-panel">
-            <div style="font-size:18px;font-weight:900;color:#0f172a;">✏️ Editar incidencia</div>
+            <div style="font-size:18px;font-weight:850;color:#0f172a;">✏️ Editar incidencia</div>
             <div style="font-size:13px;color:#64748b;">{edit_id}</div>
         </div>
         """,
@@ -1031,7 +903,7 @@ def render_bitacora_panel(data):
     st.markdown(
         f"""
         <div class="edit-panel">
-            <div style="font-size:18px;font-weight:900;color:#0f172a;">🧾 Bitácora de incidencia</div>
+            <div style="font-size:18px;font-weight:850;color:#0f172a;">🧾 Bitácora de incidencia</div>
             <div style="font-size:13px;color:#64748b;">{bit_id}</div>
         </div>
         """,
@@ -1046,7 +918,7 @@ def render_bitacora_panel(data):
                 f"""
                 <div class="timeline-card">
                     <div style="display:flex;justify-content:space-between;gap:1rem;">
-                        <div style="font-weight:900;color:#0f172a;">{b["Acción"]}</div>
+                        <div style="font-weight:800;color:#0f172a;">{b["Acción"]}</div>
                         <div style="font-size:12px;color:#64748b;">{safe_date(b["Fecha"], with_time=True)}</div>
                     </div>
                     <div style="font-size:13px;color:#475569;margin-top:8px;">{b["Comentario"]}</div>
@@ -1062,9 +934,9 @@ def render_bitacora_panel(data):
         st.rerun()
 
 
-# ==========================================================
+# =========================
 # DASHBOARD
-# ==========================================================
+# =========================
 def kpi_cards(df):
     total = len(df)
     en_proceso = len(df[df["Estatus"].astype(str).eq("En proceso")])
@@ -1096,7 +968,7 @@ def kpi_cards(df):
                         <div class="kpi-value">{value}</div>
                         <div class="kpi-sub">{sub}</div>
                     </div>
-                    <div class="kpi-icon">{icon}</div>
+                    <div style="font-size:28px;opacity:.9;">{icon}</div>
                   </div>
                 </div>
                 """,
@@ -1106,10 +978,7 @@ def kpi_cards(df):
 
 def dashboard_page(data):
     df = data["Pendientes"].copy()
-
-    page_title("Dashboard", "Resumen ejecutivo de incidencias, estatus y comportamiento por área.")
     kpi_cards(df)
-
     dff = apply_filters(df)
     render_report_table(data, dff)
 
@@ -1121,12 +990,7 @@ def dashboard_page(data):
         if not dff.empty:
             chart_df = dff.groupby("Departamento").size().reset_index(name="Cantidad")
             fig = px.bar(chart_df, x="Departamento", y="Cantidad", text="Cantidad")
-            fig.update_layout(
-                margin=dict(l=10, r=10, t=10, b=10),
-                height=310,
-                paper_bgcolor="white",
-                plot_bgcolor="white"
-            )
+            fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.caption("Sin datos para graficar.")
@@ -1143,34 +1007,28 @@ def dashboard_page(data):
                 .head(8)
             )
             fig = px.bar(top, x="Cantidad", y="Tipo de Incidencia", orientation="h", text="Cantidad")
-            fig.update_layout(
-                margin=dict(l=10, r=10, t=10, b=10),
-                height=310,
-                paper_bgcolor="white",
-                plot_bgcolor="white"
-            )
+            fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.caption("Sin datos para graficar.")
         st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ==========================================================
+# =========================
 # PENDIENTES
-# ==========================================================
+# =========================
 def pendientes_page(data):
-    create_clicked = page_title(
-        "Pendientes / Incidencias",
-        "Reporte operativo con filtros dinámicos, menú de acciones y bitácora por incidencia.",
-        "+ Nueva incidencia",
-        "btn_new_incidence"
-    )
+    top1, top2 = st.columns([1, .25])
 
-    if create_clicked:
-        st.session_state["show_create"] = not st.session_state.get("show_create", False)
+    with top1:
+        st.subheader("Pendientes / Incidencias")
+        st.caption("Reporte operativo con filtros dinámicos y actualización desde el menú de acciones.")
+
+    with top2:
+        if st.button("+ Nueva incidencia", type="primary", use_container_width=True):
+            st.session_state["show_create"] = not st.session_state.get("show_create", False)
 
     if st.session_state.get("show_create", False):
-        st.markdown('<div class="edit-panel">', unsafe_allow_html=True)
         with st.form("crear_inc", clear_on_submit=True):
             st.markdown("#### Nueva incidencia")
 
@@ -1237,42 +1095,38 @@ def pendientes_page(data):
                     st.session_state["show_create"] = False
                     st.success("Incidencia creada correctamente.")
                     clear_cache_and_rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
 
     dff = apply_filters(data["Pendientes"].copy())
     render_report_table(data, dff)
 
 
-# ==========================================================
+# =========================
 # BITÁCORA GENERAL
-# ==========================================================
+# =========================
 def bitacora_page(data):
-    page_title("Bitácora general", "Consulta centralizada de todos los movimientos registrados.")
-
+    st.subheader("Bitácora general")
     bit = data["Bitacora"].copy()
+
     q = st.text_input("Buscar en bitácora", placeholder="ID, usuario, comentario...")
 
     if q:
-        mask = bit.astype(str).apply(
-            lambda r: r.str.lower().str.contains(q.lower(), na=False).any(),
-            axis=1
-        )
+        mask = bit.astype(str).apply(lambda r: r.str.lower().str.contains(q.lower(), na=False).any(), axis=1)
         bit = bit[mask]
 
     st.dataframe(bit.sort_values("Fecha", ascending=False), use_container_width=True, hide_index=True)
 
 
-# ==========================================================
+# =========================
 # USUARIOS
-# ==========================================================
+# =========================
 def usuarios_page(data):
-    page_title("Gestión de usuarios", "Administración de accesos, roles y estados de usuarios.")
+    st.subheader("Gestión de usuarios")
+    st.caption("Solo disponible para Administrador.")
 
-    st.markdown('<div class="user-panel">', unsafe_allow_html=True)
-    st.markdown("#### Crear usuario")
+    st.markdown("### Crear usuario")
 
     with st.form("crear_usuario", clear_on_submit=True):
-        c1, c2, c3, c4, c5 = st.columns([1, 1.2, 1, .95, .95])
+        c1, c2, c3, c4, c5 = st.columns([1, 1, 1, .9, .9])
 
         with c1:
             usuario = st.text_input("Usuario")
@@ -1304,14 +1158,12 @@ def usuarios_page(data):
                     st.success("Usuario creado correctamente.")
                     clear_cache_and_rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("---")
     st.markdown("### Usuarios existentes")
 
     users = data["Usuarios"].copy()
 
-    h1, h2, h3, h4, h5 = st.columns([1, 1.5, 1, 1, 1.15])
+    h1, h2, h3, h4, h5 = st.columns([1, 1.4, 1, 1, 1.1])
     with h1:
         st.markdown("**Usuario**")
     with h2:
@@ -1323,20 +1175,21 @@ def usuarios_page(data):
     with h5:
         st.markdown("**Acciones**")
 
+    st.markdown("---")
+
     for idx, row in users.iterrows():
         usuario_actual = str(row["Usuario"])
 
-        st.markdown('<div class="user-row">', unsafe_allow_html=True)
-        c1, c2, c3, c4, c5 = st.columns([1, 1.5, 1, 1, 1.15])
+        c1, c2, c3, c4, c5 = st.columns([1, 1.4, 1, 1, 1.1])
 
         with c1:
             st.write(usuario_actual)
         with c2:
             st.write(row["Nombre"])
         with c3:
-            st.markdown(badge(row["Rol"]), unsafe_allow_html=True)
+            st.write(row["Rol"])
         with c4:
-            st.markdown(badge(row["Estado"]), unsafe_allow_html=True)
+            st.write(row["Estado"])
         with c5:
             b1, b2 = st.columns(2)
 
@@ -1355,8 +1208,6 @@ def usuarios_page(data):
                         st.success("Usuario inactivado.")
                         clear_cache_and_rerun()
 
-        st.markdown('</div>', unsafe_allow_html=True)
-
     edit_user = st.session_state.get("edit_user")
 
     if edit_user:
@@ -1367,9 +1218,8 @@ def usuarios_page(data):
             idx = hit.index[0]
             row = hit.iloc[0]
 
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown('<div class="edit-panel">', unsafe_allow_html=True)
-            st.markdown(f"#### Editar usuario: `{edit_user}`")
+            st.markdown("---")
+            st.markdown(f"### Editar usuario: `{edit_user}`")
 
             with st.form(f"form_edit_user_{edit_user}"):
                 c1, c2, c3, c4 = st.columns(4)
@@ -1408,14 +1258,13 @@ def usuarios_page(data):
                     st.session_state.pop("edit_user", None)
                     st.rerun()
 
-            st.markdown('</div>', unsafe_allow_html=True)
 
-
-# ==========================================================
+# =========================
 # CATÁLOGOS
-# ==========================================================
+# =========================
 def catalogos_page(data):
-    page_title("Catálogos", "Valores disponibles para los desplegables y clasificaciones.")
+    st.subheader("Catálogos")
+    st.caption("Valores usados en los desplegables de la app.")
 
     cat = data["Catalogos"].copy()
 
@@ -1433,16 +1282,11 @@ def catalogos_page(data):
         clear_cache_and_rerun()
 
 
-# ==========================================================
+# =========================
 # MAIN
-# ==========================================================
+# =========================
 def main():
-    try:
-        data = cached_load()
-    except Exception as e:
-        st.error("No se pudo conectar o cargar la base de datos de Google Sheets.")
-        st.exception(e)
-        return
+    data = cached_load()
 
     if not st.session_state.get("logged"):
         login_view(data)
