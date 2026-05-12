@@ -91,10 +91,6 @@ st.markdown(
 .stDeployButton,
 [data-testid="stToolbar"],
 [data-testid="stDecoration"],
-footer {
-    visibility: hidden !important;
-    display: none !important;
-}
 
 .app-shell {
     background:rgba(255,255,255,.72);
