@@ -1,16 +1,11 @@
 # Auditoría Pendientes
 
-App web en Streamlit para control y seguimiento de incidencias/pendientes de Auditoría.
+App Streamlit para gestión de pendientes e incidencias de Auditoría.
 
-## Archivos
-- `app.py`: aplicación principal.
-- `auditoria_pendientes.xlsx`: base de datos inicial.
-- `requirements.txt`: librerías.
-- `runtime.txt`: versión de Python para Streamlit Cloud.
-- `.streamlit/config.toml`: tema claro.
+## Archivos incluidos
+- app.py
+- requirements.txt
+- runtime.txt
 
-## Usuario inicial
-- Usuario: `admin`
-- Contraseña: `admin123`
-
-> Recomendación: cambiar la contraseña desde el módulo Usuarios luego de publicar.
+## Notas
+La app usa Google Sheets como base de datos mediante `st.secrets["google_service_account"]`.
