@@ -91,9 +91,7 @@ st.markdown(
 .stDeployButton,
 [data-testid="stToolbar"],
 [data-testid="stDecoration"],
-#MainMenu,
-footer,
-header {
+footer {
     visibility: hidden !important;
     display: none !important;
 }
