@@ -1,5 +1,4 @@
 import os
-import html
 from io import BytesIO
 from datetime import datetime, date
 
@@ -237,113 +236,54 @@ st.markdown(
 }
 
 .report-card {
-    background:#ffffff;
-    border:1px solid #dbe7f3;
-    border-radius:18px;
-    box-shadow:0 10px 28px rgba(15,23,42,.055);
-    overflow:hidden;
-    margin-top:1rem;
+    background:transparent;
+    border:none;
+    border-radius:0;
+    box-shadow:none;
+    overflow:visible;
+    margin-top:.75rem;
 }
 
-.audit-html-table-wrap{
-    width:100%;
-    overflow-x:auto;
-    background:#ffffff;
-}
-
-.audit-html-table{
-    width:100%;
-    min-width:1150px;
-    border-collapse:separate;
-    border-spacing:0;
-    table-layout:fixed;
-    font-size:13px;
-    color:#0f172a;
-}
-
-.audit-html-table thead th{
-    background:#f8fbff;
-    color:#475569;
-    font-size:11.5px;
+/* Encabezado limpio para mantener la lectura tipo tabla */
+.table-header {
+    background:transparent;
+    border:none;
     font-weight:900;
-    text-transform:uppercase;
-    letter-spacing:.35px;
-    text-align:left;
-    padding:15px 16px;
-    border-bottom:1px solid #e5edf7;
-    white-space:nowrap;
-}
-
-.audit-html-table tbody td{
-    padding:16px 16px;
-    border-bottom:1px solid #edf3f9;
-    vertical-align:middle;
-    line-height:1.35;
-    background:#ffffff;
-}
-
-.audit-html-table tbody tr:hover td{
-    background:#f8fbff;
-}
-
-.audit-html-table tbody tr:last-child td{
-    border-bottom:none;
-}
-
-.audit-id{
-    color:#0f3ea8;
-    font-weight:900;
-    white-space:nowrap;
-}
-
-.audit-date{
+    font-size:12px;
     color:#64748b;
-    font-weight:650;
-    white-space:nowrap;
+    padding:0 26px 8px;
+    text-transform:uppercase;
+    letter-spacing:.25px;
 }
 
-.audit-main-text{
-    color:#0f172a;
-    font-weight:750;
-    word-break:break-word;
-}
-
-.audit-desc{
-    color:#0f172a;
-    font-weight:750;
-    word-break:break-word;
-    line-height:1.4;
-}
-
-.audit-actions-cell{
-    text-align:center;
-}
-
-.audit-action-box{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    width:42px;
-    height:34px;
-    border:1px solid #d7e2f0;
-    border-radius:11px;
+/* Cada registro se presenta como una fila-card separada */
+.table-row-wrap {
     background:#ffffff;
-    color:#0f172a;
-    font-weight:900;
-    box-shadow:0 2px 6px rgba(15,23,42,.04);
+    border:1px solid #dbe4ef;
+    border-radius:16px;
+    padding:14px 16px;
+    margin:12px 14px;
+    transition:all .16s ease;
+    box-shadow:0 1px 4px rgba(15,23,42,.03);
+}
+
+.table-row-wrap:hover {
+    background:#f8fbff;
+    border-color:#cbd5e1;
+    box-shadow:0 6px 18px rgba(15,23,42,.06);
 }
 
 .cell-text {
-    font-size:13px;
+    font-size:12.8px;
     color:#0f172a;
     line-height:1.35;
-    font-weight:700;
+    font-weight:650;
 }
 
 .cell-muted {
     color:#64748b;
     font-size:12.5px;
-    font-weight:600;
+    font-weight:500;
 }
 
 .cell-label {
@@ -534,19 +474,6 @@ def slug(value):
 def badge(text):
     t = normalize_text(text) or "Sin dato"
     return f'<span class="badge badge-{slug(t)}">{t}</span>'
-
-
-
-def escape_html(value):
-    return html.escape(normalize_text(value))
-
-
-def status_badge_html(text):
-    return badge(text)
-
-
-def action_cell_html():
-    return '<span class="audit-action-box">⋮⌄</span>'
 
 
 def empty_df(name):
@@ -951,19 +878,32 @@ def render_report_table(data, dff):
         ["Pendiente", "En proceso", "En espera de respuesta", "Escalado", "Resuelto", "Cerrado"]
     )
 
+    st.markdown('<div class="report-card">', unsafe_allow_html=True)
+    st.markdown('<div class="table-header">', unsafe_allow_html=True)
+
+    h = st.columns([1.05, .9, .75, 1.15, 1.35, .85, 1.05, 2.45, .55])
+    for col, title in zip(
+        h,
+        ["ID", "Fecha", "Hotel", "Departamento", "Tipo", "Prioridad", "Estatus", "Descripción", "Acciones"]
+    ):
+        with col:
+            st.markdown(title)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
     if dff.empty:
         st.info("No hay incidencias con los filtros seleccionados.")
+        st.markdown('</div>', unsafe_allow_html=True)
         return
 
-    rows_html = []
-
     for _, row in dff.reset_index().iterrows():
-        rid = normalize_text(row.get("ID", ""))
-        desc = normalize_text(row.get("Descripción", ""))
-        desc_short = desc if len(desc) <= 115 else desc[:112] + "..."
+        idx = int(row["index"])
+        rid = str(row["ID"])
+        desc = str(row["Descripción"])
+        desc_short = desc if len(desc) <= 95 else desc[:92] + "..."
 
         hotel_short = (
-            normalize_text(row.get("Hotel", ""))
+            str(row["Hotel"])
             .replace("5910 - ", "")
             .replace("5911 - ", "")
             .replace("5917 - ", "")
@@ -971,84 +911,53 @@ def render_report_table(data, dff):
             .replace("5930 - ", "")
         )
 
-        rows_html.append(f"""
-            <tr>
-                <td><span class="audit-id">{escape_html(rid)}</span></td>
-                <td><span class="audit-date">{escape_html(safe_date(row.get("Fecha Creación", "")))}</span></td>
-                <td><span class="audit-main-text">{escape_html(hotel_short)}</span></td>
-                <td><span class="audit-main-text">{escape_html(row.get("Departamento", ""))}</span></td>
-                <td><span class="audit-main-text">{escape_html(row.get("Tipo de Incidencia", ""))}</span></td>
-                <td>{status_badge_html(row.get("Prioridad", ""))}</td>
-                <td>{status_badge_html(row.get("Estatus", ""))}</td>
-                <td><div class="audit-desc">{escape_html(desc_short)}</div></td>
-                <td class="audit-actions-cell">{action_cell_html()}</td>
-            </tr>
-        """)
+        st.markdown('<div class="table-row-wrap">', unsafe_allow_html=True)
+        c = st.columns([1.05, .9, .75, 1.15, 1.35, .85, 1.05, 2.45, .55])
 
-    table_html = f"""
-    <div class="report-card">
-        <div class="audit-html-table-wrap">
-            <table class="audit-html-table">
-                <colgroup>
-                    <col style="width:10%">
-                    <col style="width:9%">
-                    <col style="width:8%">
-                    <col style="width:12%">
-                    <col style="width:14%">
-                    <col style="width:9%">
-                    <col style="width:10%">
-                    <col style="width:23%">
-                    <col style="width:5%">
-                </colgroup>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Fecha</th>
-                        <th>Hotel</th>
-                        <th>Departamento</th>
-                        <th>Tipo</th>
-                        <th>Prioridad</th>
-                        <th>Estatus</th>
-                        <th>Descripción</th>
-                        <th style="text-align:center;">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {''.join(rows_html)}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    """
+        with c[0]:
+            st.markdown(f'<div class="cell-text"><b>{rid}</b></div>', unsafe_allow_html=True)
+        with c[1]:
+            st.markdown(f'<div class="cell-muted">{safe_date(row["Fecha Creación"])}</div>', unsafe_allow_html=True)
+        with c[2]:
+            st.markdown(f'<div class="cell-text">{hotel_short}</div>', unsafe_allow_html=True)
+        with c[3]:
+            st.markdown(f'<div class="cell-text">{row["Departamento"]}</div>', unsafe_allow_html=True)
+        with c[4]:
+            st.markdown(f'<div class="cell-text">{row["Tipo de Incidencia"]}</div>', unsafe_allow_html=True)
+        with c[5]:
+            st.markdown(badge(row["Prioridad"]), unsafe_allow_html=True)
+        with c[6]:
+            st.markdown(badge(row["Estatus"]), unsafe_allow_html=True)
+        with c[7]:
+            st.markdown(f'<div class="cell-text">{desc_short}</div>', unsafe_allow_html=True)
+        with c[8]:
+            st.markdown(
+                """
+                <div style="display:flex;justify-content:center;align-items:center;margin-top:2px;">
+                """,
+                unsafe_allow_html=True
+            )
 
-    st.markdown(table_html, unsafe_allow_html=True)
+            with st.popover("⋮"):
+                st.markdown('<div class="action-menu-note"><b>Acciones</b></div>', unsafe_allow_html=True)
 
-    st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
-    with st.expander("Acciones de incidencias", expanded=False):
-        st.caption("Selecciona una incidencia para editarla o consultar su bitácora.")
-
-        for _, row in dff.reset_index().iterrows():
-            rid = normalize_text(row.get("ID", ""))
-            descripcion = normalize_text(row.get("Descripción", ""))
-            titulo = f"{rid} · {descripcion[:60]}{'...' if len(descripcion) > 60 else ''}"
-
-            c1, c2, c3 = st.columns([4, 1, 1])
-
-            with c1:
-                st.markdown(f"**{titulo}**")
-
-            with c2:
                 if st.button("✏️ Editar", key=f"edit_{rid}", use_container_width=True):
                     st.session_state["edit_id"] = rid
                     st.rerun()
 
-            with c3:
                 if st.button("🧾 Bitácora", key=f"bit_{rid}", use_container_width=True):
                     st.session_state["show_bitacora_id"] = rid
                     st.rerun()
 
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
     render_edit_panel(data, estados)
     render_bitacora_panel(data)
+
 
 def render_edit_panel(data, estados):
     edit_id = st.session_state.get("edit_id")
