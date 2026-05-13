@@ -1054,6 +1054,36 @@ def render_bitacora_panel(data):
         st.rerun()
 
 
+def render_dashboard_simple_table(dff):
+    """Tabla simple para el Dashboard, sin acciones de edición ni bitácora."""
+    st.markdown('<div class="detail-card"><div class="detail-title">Detalle de incidencias</div>', unsafe_allow_html=True)
+
+    if dff.empty:
+        st.info("No hay incidencias con los filtros seleccionados.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        return
+
+    cols = [
+        "ID", "Fecha Creación", "Hotel", "Departamento", "Tipo de Incidencia",
+        "Prioridad", "Estatus", "Fecha Compromiso", "Descripción"
+    ]
+
+    table_df = dff[[c for c in cols if c in dff.columns]].copy()
+
+    for col in ["Fecha Creación", "Fecha Compromiso"]:
+        if col in table_df.columns:
+            table_df[col] = table_df[col].apply(safe_date)
+
+    st.dataframe(
+        table_df,
+        use_container_width=True,
+        hide_index=True,
+        height=360
+    )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
 # ==========================================================
 # DASHBOARD
 # ==========================================================
@@ -1103,7 +1133,7 @@ def dashboard_page(data):
     kpi_cards(df)
 
     dff = apply_filters(df)
-    render_report_table(data, dff)
+    render_dashboard_simple_table(dff)
 
     st.markdown("<br>", unsafe_allow_html=True)
     g1, g2 = st.columns(2)
