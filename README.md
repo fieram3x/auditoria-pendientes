@@ -1,3 +1,3 @@
 # Auditoría Pendientes
 
-Versión con edición y bitácora en ventana flotante.
+Corrección: edición y bitácora en una única ventana flotante estable.
