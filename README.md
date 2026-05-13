@@ -1,3 +1,3 @@
 # Auditoría Pendientes
 
-Versión con tabla profesional compacta.
+Versión con mejora visual de lista profesional.
