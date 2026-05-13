@@ -418,6 +418,11 @@ hr {
     .title h1{font-size:22px;}
     .user-pill{display:none;}
 }
+
+/* Ventanas flotantes */
+div[data-testid="stDialog"] div[role="dialog"] {
+    border-radius:18px !important;
+}
 </style>
 """,
     unsafe_allow_html=True
@@ -926,8 +931,7 @@ def render_report_table(data, dff):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    render_edit_panel(data, estados)
-    render_bitacora_panel(data)
+    # Las acciones se muestran en ventanas flotantes mediante st.dialog.
 
 
 def render_edit_panel(data, estados):
@@ -946,71 +950,65 @@ def render_edit_panel(data, estados):
     idx = hit.index[0]
     row = hit.iloc[0]
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div class="edit-panel">
-            <div style="font-size:18px;font-weight:900;color:#0f172a;">✏️ Editar incidencia</div>
-            <div style="font-size:13px;color:#64748b;">{edit_id}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    @st.dialog(f"✏️ Editar incidencia {edit_id}", width="large")
+    def edit_dialog():
+        st.caption("Actualiza el estatus y agrega un comentario para dejar trazabilidad en la bitácora.")
 
-    with st.form(f"form_edit_{edit_id}"):
-        c1, c2 = st.columns([.32, .68])
+        with st.form(f"form_edit_{edit_id}", clear_on_submit=False):
+            c1, c2 = st.columns([.35, .65])
 
-        with c1:
-            current_status = str(row["Estatus"])
-            pos = estados.index(current_status) if current_status in estados else 0
-            nuevo_estatus = st.selectbox("Nuevo estatus", estados, index=pos)
+            with c1:
+                current_status = str(row["Estatus"])
+                pos = estados.index(current_status) if current_status in estados else 0
+                nuevo_estatus = st.selectbox("Nuevo estatus", estados, index=pos)
 
-        with c2:
-            comentario = st.text_area(
-                "Comentario de actualización",
-                placeholder="Agrega el comentario de seguimiento...",
-                height=90
-            )
+            with c2:
+                comentario = st.text_area(
+                    "Comentario de actualización",
+                    placeholder="Agrega el comentario de seguimiento...",
+                    height=120
+                )
 
-        b1, b2 = st.columns([.2, .8])
+            b1, b2 = st.columns([.25, .75])
 
-        with b1:
-            guardar = st.form_submit_button("Guardar", type="primary", use_container_width=True)
-        with b2:
-            cancelar = st.form_submit_button("Cancelar")
+            with b1:
+                guardar = st.form_submit_button("Guardar", type="primary", use_container_width=True)
+            with b2:
+                cancelar = st.form_submit_button("Cancelar")
 
-        if guardar:
-            anterior = str(data["Pendientes"].loc[idx, "Estatus"])
-            data["Pendientes"].loc[idx, "Estatus"] = str(nuevo_estatus)
-            data["Pendientes"].loc[idx, "Última Actualización"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            close_status_if_needed(data, idx, nuevo_estatus)
+            if guardar:
+                anterior = str(data["Pendientes"].loc[idx, "Estatus"])
+                data["Pendientes"].loc[idx, "Estatus"] = str(nuevo_estatus)
+                data["Pendientes"].loc[idx, "Última Actualización"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                close_status_if_needed(data, idx, nuevo_estatus)
 
-            accion = "Cambio de estatus" if nuevo_estatus != anterior else "Comentario"
-            texto = comentario.strip() if comentario.strip() else "Actualización registrada."
+                accion = "Cambio de estatus" if nuevo_estatus != anterior else "Comentario"
+                texto = comentario.strip() if comentario.strip() else "Actualización registrada."
 
-            bit = pd.DataFrame(
-                [[
-                    edit_id,
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    st.session_state.get("user", ""),
-                    accion,
-                    texto,
-                    anterior,
-                    nuevo_estatus
-                ]],
-                columns=BITACORA_COLUMNS
-            )
+                bit = pd.DataFrame(
+                    [[
+                        edit_id,
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        st.session_state.get("user", ""),
+                        accion,
+                        texto,
+                        anterior,
+                        nuevo_estatus
+                    ]],
+                    columns=BITACORA_COLUMNS
+                )
 
-            data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
-            save_data(data)
-            st.session_state.pop("edit_id", None)
-            st.success("Incidencia actualizada correctamente.")
-            clear_cache_and_rerun()
+                data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
+                save_data(data)
+                st.session_state.pop("edit_id", None)
+                st.success("Incidencia actualizada correctamente.")
+                clear_cache_and_rerun()
 
-        if cancelar:
-            st.session_state.pop("edit_id", None)
-            st.rerun()
+            if cancelar:
+                st.session_state.pop("edit_id", None)
+                st.rerun()
 
+    edit_dialog()
 
 def render_bitacora_panel(data):
     bit_id = st.session_state.get("show_bitacora_id")
@@ -1021,39 +1019,34 @@ def render_bitacora_panel(data):
     bit = data["Bitacora"].copy()
     bit = bit[bit["ID Pendiente"].astype(str) == bit_id].sort_values("Fecha", ascending=False)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div class="edit-panel">
-            <div style="font-size:18px;font-weight:900;color:#0f172a;">🧾 Bitácora de incidencia</div>
-            <div style="font-size:13px;color:#64748b;">{bit_id}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    @st.dialog(f"🧾 Bitácora de incidencia {bit_id}", width="large")
+    def bitacora_dialog():
+        st.caption("Historial de cambios, comentarios y movimientos registrados para esta incidencia.")
 
-    if bit.empty:
-        st.info("Esta incidencia todavía no tiene movimientos registrados.")
-    else:
-        for _, b in bit.iterrows():
-            st.markdown(
-                f"""
-                <div class="timeline-card">
-                    <div style="display:flex;justify-content:space-between;gap:1rem;">
-                        <div style="font-weight:900;color:#0f172a;">{b["Acción"]}</div>
-                        <div style="font-size:12px;color:#64748b;">{safe_date(b["Fecha"], with_time=True)}</div>
+        if bit.empty:
+            st.info("Esta incidencia todavía no tiene movimientos registrados.")
+        else:
+            for _, b in bit.iterrows():
+                st.markdown(
+                    f"""
+                    <div class="timeline-card">
+                        <div style="display:flex;justify-content:space-between;gap:1rem;">
+                            <div style="font-weight:900;color:#0f172a;">{b["Acción"]}</div>
+                            <div style="font-size:12px;color:#64748b;">{safe_date(b["Fecha"], with_time=True)}</div>
+                        </div>
+                        <div style="font-size:13px;color:#475569;margin-top:8px;">{b["Comentario"]}</div>
+                        <div style="font-size:12px;color:#64748b;margin-top:8px;">{b["Estado Anterior"]} → {b["Estado Nuevo"]}</div>
+                        <div style="font-size:12px;color:#94a3b8;margin-top:6px;">Usuario: {b["Usuario"]}</div>
                     </div>
-                    <div style="font-size:13px;color:#475569;margin-top:8px;">{b["Comentario"]}</div>
-                    <div style="font-size:12px;color:#64748b;margin-top:8px;">{b["Estado Anterior"]} → {b["Estado Nuevo"]}</div>
-                    <div style="font-size:12px;color:#94a3b8;margin-top:6px;">Usuario: {b["Usuario"]}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+                    """,
+                    unsafe_allow_html=True
+                )
 
-    if st.button("Cerrar bitácora", key=f"close_bit_{bit_id}"):
-        st.session_state.pop("show_bitacora_id", None)
-        st.rerun()
+        if st.button("Cerrar", key=f"close_bit_{bit_id}", use_container_width=True):
+            st.session_state.pop("show_bitacora_id", None)
+            st.rerun()
+
+    bitacora_dialog()
 
 
 # ==========================================================
@@ -1444,6 +1437,15 @@ def main():
 
     sidebar_nav()
     header()
+
+    # Ventanas flotantes para acciones de incidencias
+    estados_dialog = get_catalog(
+        data,
+        "Estatus",
+        ["Pendiente", "En proceso", "En espera de respuesta", "Escalado", "Resuelto", "Cerrado"]
+    )
+    render_edit_panel(data, estados_dialog)
+    render_bitacora_panel(data)
 
     page = st.session_state.get("page", "Dashboard")
 
