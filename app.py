@@ -414,6 +414,18 @@ hr {
     border-color:var(--border);
 }
 
+/* Ventanas flotantes de Editar y Bitácora */
+div[data-testid="stDialog"] > div {
+    border-radius:22px;
+    border:1px solid var(--border);
+    box-shadow:0 24px 70px rgba(15,23,42,.22);
+}
+
+div[data-testid="stDialog"] h2 {
+    color:#0f172a;
+    font-weight:900;
+}
+
 @media (max-width: 1200px){
     .title h1{font-size:22px;}
     .user-pill{display:none;}
@@ -651,6 +663,12 @@ def close_status_if_needed(data, idx, new_status):
         data["Pendientes"].loc[idx, "Fecha Cierre"] = ""
 
 
+def close_floating_windows():
+    """Cierra cualquier ventana flotante activa para evitar que se abra sola al navegar."""
+    for key in ["edit_id", "show_bitacora_id"]:
+        st.session_state.pop(key, None)
+
+
 # ==========================================================
 # LOGIN
 # ==========================================================
@@ -745,6 +763,7 @@ def sidebar_nav():
             use_container_width=True,
             type="primary" if st.session_state.page == page else "secondary"
         ):
+            close_floating_windows()
             st.session_state.page = page
             st.rerun()
 
@@ -915,10 +934,12 @@ def render_report_table(data, dff):
                 st.markdown('<div class="action-menu-note"><b>Acciones</b></div>', unsafe_allow_html=True)
 
                 if st.button("✏️ Editar", key=f"edit_{rid}", use_container_width=True):
+                    st.session_state.pop("show_bitacora_id", None)
                     st.session_state["edit_id"] = rid
                     st.rerun()
 
                 if st.button("🧾 Bitácora", key=f"bit_{rid}", use_container_width=True):
+                    st.session_state.pop("edit_id", None)
                     st.session_state["show_bitacora_id"] = rid
                     st.rerun()
 
@@ -930,6 +951,7 @@ def render_report_table(data, dff):
     render_bitacora_panel(data)
 
 
+@st.dialog("✏️ Editar incidencia", width="large")
 def render_edit_panel(data, estados):
     edit_id = st.session_state.get("edit_id")
 
@@ -941,24 +963,16 @@ def render_edit_panel(data, estados):
 
     if hit.empty:
         st.session_state.pop("edit_id", None)
-        return
+        st.rerun()
 
     idx = hit.index[0]
     row = hit.iloc[0]
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div class="edit-panel">
-            <div style="font-size:18px;font-weight:900;color:#0f172a;">✏️ Editar incidencia</div>
-            <div style="font-size:13px;color:#64748b;">{edit_id}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown(f"**Incidencia:** `{edit_id}`")
+    st.caption("Actualiza el estatus y registra el comentario de seguimiento.")
 
     with st.form(f"form_edit_{edit_id}"):
-        c1, c2 = st.columns([.32, .68])
+        c1, c2 = st.columns([.34, .66])
 
         with c1:
             current_status = str(row["Estatus"])
@@ -969,10 +983,10 @@ def render_edit_panel(data, estados):
             comentario = st.text_area(
                 "Comentario de actualización",
                 placeholder="Agrega el comentario de seguimiento...",
-                height=90
+                height=110
             )
 
-        b1, b2 = st.columns([.2, .8])
+        b1, b2 = st.columns([.22, .78])
 
         with b1:
             guardar = st.form_submit_button("Guardar", type="primary", use_container_width=True)
@@ -1012,25 +1026,18 @@ def render_edit_panel(data, estados):
             st.rerun()
 
 
+@st.dialog("🧾 Bitácora de incidencia", width="large")
 def render_bitacora_panel(data):
     bit_id = st.session_state.get("show_bitacora_id")
 
     if not bit_id:
         return
 
+    st.markdown(f"**Incidencia:** `{bit_id}`")
+    st.caption("Historial de movimientos registrados para esta incidencia.")
+
     bit = data["Bitacora"].copy()
     bit = bit[bit["ID Pendiente"].astype(str) == bit_id].sort_values("Fecha", ascending=False)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div class="edit-panel">
-            <div style="font-size:18px;font-weight:900;color:#0f172a;">🧾 Bitácora de incidencia</div>
-            <div style="font-size:13px;color:#64748b;">{bit_id}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
 
     if bit.empty:
         st.info("Esta incidencia todavía no tiene movimientos registrados.")
