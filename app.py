@@ -816,6 +816,173 @@ def normalize_filter_value(key, options):
     return current
 
 
+def clean_multiselect_values(key, options):
+    """Mantiene válidos los valores seleccionados en filtros multiselección."""
+    current = st.session_state.get(key, [])
+
+    if isinstance(current, str):
+        current = [] if current in ["Todos", ""] else [current]
+
+    valid = [v for v in current if v in options]
+
+    if len(valid) != len(current):
+        st.session_state[key] = valid
+
+    return valid
+
+
+def options_from_filtered_df_multi(df, column, filters=None):
+    """Devuelve opciones dinámicas considerando filtros multiselección ya aplicados."""
+    if column not in df.columns:
+        return []
+
+    temp = df.copy()
+    filters = filters or {}
+
+    for f_col, f_vals in filters.items():
+        if f_col == column or f_col not in temp.columns:
+            continue
+
+        if isinstance(f_vals, str):
+            f_vals = [] if f_vals in ["Todos", ""] else [f_vals]
+
+        f_vals = [str(v) for v in f_vals if v]
+
+        if f_vals:
+            temp = temp[temp[f_col].astype(str).isin(f_vals)]
+
+    vals = sorted([
+        v for v in temp[column].astype(str).str.strip().unique().tolist()
+        if v and v.lower() != "nan"
+    ])
+
+    return vals
+
+
+def apply_dashboard_multifilters(df):
+    """Filtros del Dashboard en modo multifiltro dinámico."""
+    st.markdown('<div class="filter-box">', unsafe_allow_html=True)
+
+    cols_filter = {
+        "Hotel": "dash_hotel_multi",
+        "Departamento": "dash_depto_multi",
+        "Tipo de Incidencia": "dash_tipo_multi",
+        "Prioridad": "dash_prioridad_multi",
+        "Estatus": "dash_estatus_multi",
+    }
+
+    selected = {
+        col: st.session_state.get(key, [])
+        for col, key in cols_filter.items()
+    }
+
+    f1, f2, f3, f4, f5 = st.columns([1.05, 1.15, 1.25, .9, 1])
+
+    with f1:
+        hotel_options = options_from_filtered_df_multi(df, "Hotel", selected)
+        hotel = st.multiselect(
+            "Hotel",
+            hotel_options,
+            default=clean_multiselect_values(cols_filter["Hotel"], hotel_options),
+            placeholder="Todos",
+            key=cols_filter["Hotel"]
+        )
+        selected["Hotel"] = hotel
+
+    with f2:
+        depto_options = options_from_filtered_df_multi(df, "Departamento", selected)
+        depto = st.multiselect(
+            "Departamento",
+            depto_options,
+            default=clean_multiselect_values(cols_filter["Departamento"], depto_options),
+            placeholder="Todos",
+            key=cols_filter["Departamento"]
+        )
+        selected["Departamento"] = depto
+
+    with f3:
+        tipo_options = options_from_filtered_df_multi(df, "Tipo de Incidencia", selected)
+        tipo = st.multiselect(
+            "Tipo de Incidencia",
+            tipo_options,
+            default=clean_multiselect_values(cols_filter["Tipo de Incidencia"], tipo_options),
+            placeholder="Todos",
+            key=cols_filter["Tipo de Incidencia"]
+        )
+        selected["Tipo de Incidencia"] = tipo
+
+    with f4:
+        prioridad_options = options_from_filtered_df_multi(df, "Prioridad", selected)
+        prioridad = st.multiselect(
+            "Prioridad",
+            prioridad_options,
+            default=clean_multiselect_values(cols_filter["Prioridad"], prioridad_options),
+            placeholder="Todos",
+            key=cols_filter["Prioridad"]
+        )
+        selected["Prioridad"] = prioridad
+
+    with f5:
+        estatus_options = options_from_filtered_df_multi(df, "Estatus", selected)
+        estatus = st.multiselect(
+            "Estatus",
+            estatus_options,
+            default=clean_multiselect_values(cols_filter["Estatus"], estatus_options),
+            placeholder="Todos",
+            key=cols_filter["Estatus"]
+        )
+        selected["Estatus"] = estatus
+
+    b1, b2, b3, b4 = st.columns([1.15, .95, 2.7, 1.35])
+
+    with b1:
+        texto_key = "dash_texto_multi"
+        texto = st.text_input("Buscar", placeholder="ID, descripción...", key=texto_key)
+
+    dff = df.copy()
+
+    for col, vals in selected.items():
+        if isinstance(vals, str):
+            vals = [] if vals in ["Todos", ""] else [vals]
+        vals = [str(v) for v in vals if v]
+
+        if vals and col in dff.columns:
+            dff = dff[dff[col].astype(str).isin(vals)]
+
+    if texto:
+        q = texto.lower().strip()
+        mask = dff.astype(str).apply(
+            lambda r: r.str.lower().str.contains(q, na=False).any(),
+            axis=1
+        )
+        dff = dff[mask]
+
+    with b2:
+        if st.button("↻ Limpiar", key="dash_clear_multifilters", use_container_width=True):
+            for k in list(cols_filter.values()) + [texto_key]:
+                st.session_state.pop(k, None)
+            st.rerun()
+
+    with b3:
+        active_filters = sum(1 for vals in selected.values() if vals) + (1 if texto else 0)
+        st.markdown(
+            f'<div class="small-note" style="margin-top:9px;">Filtros activos: <b>{active_filters}</b> · Mostrando <b>{len(dff)}</b> resultado(s)</div>',
+            unsafe_allow_html=True
+        )
+
+    with b4:
+        st.download_button(
+            "⬇ Exportar",
+            filtered_excel_bytes(dff),
+            "dashboard_filtrado.xlsx",
+            use_container_width=True,
+            key="dash_export_multi"
+        )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    return dff
+
+
 def apply_filters(df, key_prefix="f"):
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
 
@@ -1209,7 +1376,7 @@ def dashboard_page(data):
     page_title("Dashboard", "Resumen ejecutivo de incidencias, estatus y comportamiento por área.")
     kpi_cards(df)
 
-    dff = apply_filters(df, key_prefix="dash")
+    dff = apply_dashboard_multifilters(df)
     render_dashboard_simple_table(dff)
 
     st.markdown("<br>", unsafe_allow_html=True)
