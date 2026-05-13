@@ -90,7 +90,10 @@ st.markdown(
 
 .stDeployButton,
 [data-testid="stToolbar"],
-[data-testid="stDecoration"],
+[data-testid="stDecoration"] {
+    display:none !important;
+    visibility:hidden !important;
+}
 
 .app-shell {
     background:rgba(255,255,255,.72);
@@ -236,44 +239,83 @@ st.markdown(
 }
 
 .report-card {
-    background:#fff;
-    border:1px solid var(--border);
+    background:transparent;
+    border:0;
     border-radius:18px;
-    box-shadow:0 3px 14px rgba(15,23,42,.045);
-    overflow:hidden;
-    margin-top:.75rem;
+    box-shadow:none;
+    overflow:visible;
+    margin-top:.85rem;
 }
 
 .table-header {
-    background:linear-gradient(180deg,#f8fbff,#f4f8ff);
-    border-bottom:1px solid var(--border);
+    background:#ffffff;
+    border:1px solid var(--border);
+    border-radius:16px;
     font-weight:900;
-    font-size:12px;
-    color:#334155;
-    padding:11px 13px;
+    font-size:11.5px;
+    color:#64748b;
+    padding:10px 14px;
     text-transform:uppercase;
-    letter-spacing:.25px;
+    letter-spacing:.28px;
+    box-shadow:0 2px 10px rgba(15,23,42,.035);
+    margin-bottom:8px;
 }
 
 .table-row-wrap {
-    border-bottom:1px solid #eef3f9;
-    padding:8px 13px;
+    background:#ffffff;
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:12px 14px;
+    margin-bottom:10px;
+    box-shadow:0 2px 10px rgba(15,23,42,.035);
     transition: all .14s ease-in-out;
 }
 
 .table-row-wrap:hover {
-    background:#f8fbff;
+    background:#fbfdff;
+    border-color:#cfe0f5;
+    box-shadow:0 6px 18px rgba(15,23,42,.07);
+    transform:translateY(-1px);
 }
 
 .cell-text {
-    font-size:12.5px;
+    font-size:12.7px;
     color:#0f172a;
-    line-height:1.25;
+    line-height:1.35;
+}
+
+.cell-id {
+    font-size:12.8px;
+    color:#0f172a;
+    font-weight:900;
+    line-height:1.2;
+}
+
+.cell-desc {
+    font-size:12.7px;
+    color:#334155;
+    line-height:1.35;
 }
 
 .cell-muted {
     color:#64748b;
     font-size:12.5px;
+}
+
+.action-cell {
+    display:flex;
+    justify-content:flex-end;
+    align-items:center;
+}
+
+.action-cell div[data-testid="stPopover"] button {
+    border-radius:12px !important;
+    min-width:38px !important;
+    height:36px !important;
+    padding:0 !important;
+    background:#ffffff !important;
+    border:1px solid #d7e2f0 !important;
+    box-shadow:0 1px 4px rgba(15,23,42,.04);
 }
 
 .badge {
@@ -861,13 +903,14 @@ def render_report_table(data, dff):
     st.markdown('<div class="report-card">', unsafe_allow_html=True)
     st.markdown('<div class="table-header">', unsafe_allow_html=True)
 
-    h = st.columns([1.05, .9, .75, 1.15, 1.4, .85, 1.15, 2.2, .52])
+    h = st.columns([1.08, .9, .78, 1.12, 1.35, .86, 1.08, 2.45, .55])
     for col, title in zip(
         h,
         ["ID", "Fecha", "Hotel", "Departamento", "Tipo", "Prioridad", "Estatus", "Descripción", "Acciones"]
     ):
         with col:
-            st.markdown(title)
+            align = "right" if title == "Acciones" else "left"
+            st.markdown(f'<div style="text-align:{align};">{title}</div>', unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -892,10 +935,10 @@ def render_report_table(data, dff):
         )
 
         st.markdown('<div class="table-row-wrap">', unsafe_allow_html=True)
-        c = st.columns([1.05, .9, .75, 1.15, 1.4, .85, 1.15, 2.2, .52])
+        c = st.columns([1.08, .9, .78, 1.12, 1.35, .86, 1.08, 2.45, .55])
 
         with c[0]:
-            st.markdown(f'<div class="cell-text"><b>{rid}</b></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="cell-id">{rid}</div>', unsafe_allow_html=True)
         with c[1]:
             st.markdown(f'<div class="cell-muted">{safe_date(row["Fecha Creación"])}</div>', unsafe_allow_html=True)
         with c[2]:
@@ -909,8 +952,9 @@ def render_report_table(data, dff):
         with c[6]:
             st.markdown(badge(row["Estatus"]), unsafe_allow_html=True)
         with c[7]:
-            st.markdown(f'<div class="cell-text">{desc_short}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="cell-desc">{desc_short}</div>', unsafe_allow_html=True)
         with c[8]:
+            st.markdown('<div class="action-cell">', unsafe_allow_html=True)
             with st.popover("⋮"):
                 st.markdown('<div class="action-menu-note"><b>Acciones</b></div>', unsafe_allow_html=True)
 
@@ -921,6 +965,8 @@ def render_report_table(data, dff):
                 if st.button("🧾 Bitácora", key=f"bit_{rid}", use_container_width=True):
                     st.session_state["show_bitacora_id"] = rid
                     st.rerun()
+
+            st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('</div>', unsafe_allow_html=True)
 
