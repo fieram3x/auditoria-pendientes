@@ -787,35 +787,112 @@ def page_title(title, subtitle="", button_label=None, button_key=None):
 # ==========================================================
 # FILTROS
 # ==========================================================
-def apply_filters(df):
+def options_from_filtered_df(df, column, filters=None):
+    """Devuelve opciones dinámicas tomando en cuenta los filtros ya seleccionados."""
+    if column not in df.columns:
+        return ["Todos"]
+
+    temp = df.copy()
+    filters = filters or {}
+
+    for f_col, f_val in filters.items():
+        if f_col != column and f_val and f_val != "Todos" and f_col in temp.columns:
+            temp = temp[temp[f_col].astype(str).eq(str(f_val))]
+
+    vals = sorted([
+        v for v in temp[column].astype(str).str.strip().unique().tolist()
+        if v and v.lower() != "nan"
+    ])
+
+    return ["Todos"] + vals
+
+
+def normalize_filter_value(key, options):
+    """Evita errores cuando un filtro anterior deja sin valor válido a otro filtro."""
+    current = st.session_state.get(key, "Todos")
+    if current not in options:
+        st.session_state[key] = "Todos"
+        return "Todos"
+    return current
+
+
+def apply_filters(df, key_prefix="f"):
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
+
+    cols_filter = {
+        "Hotel": f"{key_prefix}_hotel",
+        "Departamento": f"{key_prefix}_depto",
+        "Tipo de Incidencia": f"{key_prefix}_tipo",
+        "Prioridad": f"{key_prefix}_prioridad",
+        "Estatus": f"{key_prefix}_estatus",
+    }
+
+    selected = {
+        col: st.session_state.get(key, "Todos")
+        for col, key in cols_filter.items()
+    }
 
     f1, f2, f3, f4, f5, f6 = st.columns([1.05, 1.15, 1.25, .9, 1, 1.25])
 
     with f1:
-        hotel = st.selectbox("Hotel", dynamic_options(df, "Hotel"), key="f_hotel")
+        hotel_options = options_from_filtered_df(df, "Hotel", selected)
+        hotel = st.selectbox(
+            "Hotel",
+            hotel_options,
+            index=hotel_options.index(normalize_filter_value(cols_filter["Hotel"], hotel_options)),
+            key=cols_filter["Hotel"]
+        )
+        selected["Hotel"] = hotel
+
     with f2:
-        depto = st.selectbox("Departamento", dynamic_options(df, "Departamento"), key="f_depto")
+        depto_options = options_from_filtered_df(df, "Departamento", selected)
+        depto = st.selectbox(
+            "Departamento",
+            depto_options,
+            index=depto_options.index(normalize_filter_value(cols_filter["Departamento"], depto_options)),
+            key=cols_filter["Departamento"]
+        )
+        selected["Departamento"] = depto
+
     with f3:
-        tipo = st.selectbox("Tipo de Incidencia", dynamic_options(df, "Tipo de Incidencia"), key="f_tipo")
+        tipo_options = options_from_filtered_df(df, "Tipo de Incidencia", selected)
+        tipo = st.selectbox(
+            "Tipo de Incidencia",
+            tipo_options,
+            index=tipo_options.index(normalize_filter_value(cols_filter["Tipo de Incidencia"], tipo_options)),
+            key=cols_filter["Tipo de Incidencia"]
+        )
+        selected["Tipo de Incidencia"] = tipo
+
     with f4:
-        prioridad = st.selectbox("Prioridad", dynamic_options(df, "Prioridad"), key="f_prioridad")
+        prioridad_options = options_from_filtered_df(df, "Prioridad", selected)
+        prioridad = st.selectbox(
+            "Prioridad",
+            prioridad_options,
+            index=prioridad_options.index(normalize_filter_value(cols_filter["Prioridad"], prioridad_options)),
+            key=cols_filter["Prioridad"]
+        )
+        selected["Prioridad"] = prioridad
+
     with f5:
-        estatus = st.selectbox("Estatus", dynamic_options(df, "Estatus"), key="f_estatus")
+        estatus_options = options_from_filtered_df(df, "Estatus", selected)
+        estatus = st.selectbox(
+            "Estatus",
+            estatus_options,
+            index=estatus_options.index(normalize_filter_value(cols_filter["Estatus"], estatus_options)),
+            key=cols_filter["Estatus"]
+        )
+        selected["Estatus"] = estatus
+
     with f6:
-        texto = st.text_input("Buscar", placeholder="ID, descripción, comentario...", key="f_texto")
+        texto_key = f"{key_prefix}_texto"
+        texto = st.text_input("Buscar", placeholder="ID, descripción, comentario...", key=texto_key)
 
     dff = df.copy()
 
-    for col, val in [
-        ("Hotel", hotel),
-        ("Departamento", depto),
-        ("Tipo de Incidencia", tipo),
-        ("Prioridad", prioridad),
-        ("Estatus", estatus),
-    ]:
-        if val != "Todos":
-            dff = dff[dff[col].astype(str).eq(val)]
+    for col, val in selected.items():
+        if val != "Todos" and col in dff.columns:
+            dff = dff[dff[col].astype(str).eq(str(val))]
 
     if texto:
         q = texto.lower().strip()
@@ -828,8 +905,8 @@ def apply_filters(df):
     b1, b2, b3 = st.columns([.8, .9, 4])
 
     with b1:
-        if st.button("↻ Limpiar filtros"):
-            for k in ["f_hotel", "f_depto", "f_tipo", "f_prioridad", "f_estatus", "f_texto"]:
+        if st.button("↻ Limpiar filtros", key=f"{key_prefix}_clear_filters"):
+            for k in list(cols_filter.values()) + [texto_key]:
                 st.session_state.pop(k, None)
             st.rerun()
 
@@ -838,7 +915,8 @@ def apply_filters(df):
             "⬇ Exportar",
             filtered_excel_bytes(dff),
             "pendientes_filtrados.xlsx",
-            use_container_width=True
+            use_container_width=True,
+            key=f"{key_prefix}_export"
         )
 
     with b3:
@@ -849,7 +927,6 @@ def apply_filters(df):
 
     st.markdown('</div>', unsafe_allow_html=True)
     return dff
-
 
 # ==========================================================
 # TABLA DE INCIDENCIAS
@@ -1132,7 +1209,7 @@ def dashboard_page(data):
     page_title("Dashboard", "Resumen ejecutivo de incidencias, estatus y comportamiento por área.")
     kpi_cards(df)
 
-    dff = apply_filters(df)
+    dff = apply_filters(df, key_prefix="dash")
     render_dashboard_simple_table(dff)
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1261,7 +1338,7 @@ def pendientes_page(data):
                     clear_cache_and_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-    dff = apply_filters(data["Pendientes"].copy())
+    dff = apply_filters(data["Pendientes"].copy(), key_prefix="pend")
     render_report_table(data, dff)
 
 
