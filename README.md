@@ -1,3 +1,3 @@
 # Auditoría Pendientes
 
-Versión con mejora visual de lista profesional.
+Lista visual tipo Control de Datafono.
