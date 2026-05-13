@@ -236,72 +236,52 @@ st.markdown(
 }
 
 .report-card {
-    background:transparent;
-    border:none;
-    border-radius:0;
-    box-shadow:none;
-    overflow:visible;
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:18px;
+    box-shadow:0 3px 14px rgba(15,23,42,.045);
+    overflow:hidden;
     margin-top:.75rem;
 }
 
-/* Encabezado limpio para mantener la lectura tipo tabla */
 .table-header {
-    background:transparent;
-    border:none;
+    background:linear-gradient(180deg,#f8fbff,#f4f8ff);
+    border-bottom:1px solid var(--border);
     font-weight:900;
     font-size:12px;
-    color:#64748b;
-    padding:0 26px 8px;
+    color:#334155;
+    padding:11px 13px;
     text-transform:uppercase;
     letter-spacing:.25px;
 }
 
-/* Cada registro se presenta como una fila-card separada */
 .table-row-wrap {
-    background:#ffffff;
-    border:1px solid #dbe4ef;
-    border-radius:16px;
-    padding:14px 16px;
-    margin:12px 14px;
-    transition:all .16s ease;
-    box-shadow:0 1px 4px rgba(15,23,42,.03);
+    border-bottom:1px solid #eef3f9;
+    padding:8px 13px;
+    transition: all .14s ease-in-out;
 }
 
 .table-row-wrap:hover {
     background:#f8fbff;
-    border-color:#cbd5e1;
-    box-shadow:0 6px 18px rgba(15,23,42,.06);
 }
 
 .cell-text {
-    font-size:12.8px;
+    font-size:12.5px;
     color:#0f172a;
-    line-height:1.35;
-    font-weight:650;
+    line-height:1.25;
 }
 
 .cell-muted {
     color:#64748b;
     font-size:12.5px;
-    font-weight:500;
-}
-
-.cell-label {
-    display:block;
-    font-size:11.5px;
-    color:#64748b;
-    font-weight:700;
-    margin-bottom:4px;
 }
 
 .badge {
     display:inline-flex;
     align-items:center;
     justify-content:center;
-    min-width:86px;
-    height:28px;
     border-radius:999px;
-    padding:0 11px;
+    padding:5px 9px;
     font-size:11.5px;
     font-weight:850;
     line-height:1;
@@ -881,7 +861,7 @@ def render_report_table(data, dff):
     st.markdown('<div class="report-card">', unsafe_allow_html=True)
     st.markdown('<div class="table-header">', unsafe_allow_html=True)
 
-    h = st.columns([1.05, .9, .75, 1.15, 1.35, .85, 1.05, 2.45, .55])
+    h = st.columns([1.05, .9, .75, 1.15, 1.4, .85, 1.15, 2.2, .52])
     for col, title in zip(
         h,
         ["ID", "Fecha", "Hotel", "Departamento", "Tipo", "Prioridad", "Estatus", "Descripción", "Acciones"]
@@ -900,7 +880,7 @@ def render_report_table(data, dff):
         idx = int(row["index"])
         rid = str(row["ID"])
         desc = str(row["Descripción"])
-        desc_short = desc if len(desc) <= 95 else desc[:92] + "..."
+        desc_short = desc if len(desc) <= 105 else desc[:102] + "..."
 
         hotel_short = (
             str(row["Hotel"])
@@ -912,7 +892,7 @@ def render_report_table(data, dff):
         )
 
         st.markdown('<div class="table-row-wrap">', unsafe_allow_html=True)
-        c = st.columns([1.05, .9, .75, 1.15, 1.35, .85, 1.05, 2.45, .55])
+        c = st.columns([1.05, .9, .75, 1.15, 1.4, .85, 1.15, 2.2, .52])
 
         with c[0]:
             st.markdown(f'<div class="cell-text"><b>{rid}</b></div>', unsafe_allow_html=True)
@@ -931,13 +911,6 @@ def render_report_table(data, dff):
         with c[7]:
             st.markdown(f'<div class="cell-text">{desc_short}</div>', unsafe_allow_html=True)
         with c[8]:
-            st.markdown(
-                """
-                <div style="display:flex;justify-content:center;align-items:center;margin-top:2px;">
-                """,
-                unsafe_allow_html=True
-            )
-
             with st.popover("⋮"):
                 st.markdown('<div class="action-menu-note"><b>Acciones</b></div>', unsafe_allow_html=True)
 
@@ -948,8 +921,6 @@ def render_report_table(data, dff):
                 if st.button("🧾 Bitácora", key=f"bit_{rid}", use_container_width=True):
                     st.session_state["show_bitacora_id"] = rid
                     st.rerun()
-
-            st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown('</div>', unsafe_allow_html=True)
 
