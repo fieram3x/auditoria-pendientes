@@ -245,6 +245,61 @@ st.markdown(
     margin-top:.75rem;
 }
 
+
+.table-header {
+    background: linear-gradient(180deg,#f8fbff,#eef4ff) !important;
+    border-bottom: 1px solid #dbe7f5 !important;
+    font-weight: 900 !important;
+    font-size: 13px !important;
+    color: #1e293b !important;
+    padding: 14px 14px !important;
+    text-transform: uppercase !important;
+    letter-spacing: .3px !important;
+}
+
+.table-row-wrap {
+    border: 1px solid #edf2f7 !important;
+    border-radius: 14px !important;
+    margin: 10px 8px !important;
+    padding: 12px 14px !important;
+    background: #ffffff !important;
+    box-shadow: 0 2px 10px rgba(15,23,42,.04) !important;
+    transition: all .15s ease-in-out !important;
+}
+
+.table-row-wrap:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px rgba(15,23,42,.08) !important;
+    background:#f8fbff !important;
+}
+
+.cell-text {
+    font-size: 13px !important;
+    color:#0f172a !important;
+    font-weight:500 !important;
+}
+
+.cell-muted {
+    font-size: 12px !important;
+    color:#64748b !important;
+}
+
+.report-card {
+    background:#ffffff !important;
+    border:1px solid #e2e8f0 !important;
+    border-radius:22px !important;
+    overflow:hidden !important;
+    padding-bottom:10px !important;
+}
+
+div[data-testid="stPopover"] button {
+    min-width: 40px !important;
+    border-radius: 12px !important;
+    border:1px solid #dbe4f0 !important;
+    background:#fff !important;
+}
+
+
 .table-header {
     background:linear-gradient(180deg,#f8fbff,#f4f8ff);
     border-bottom:1px solid var(--border);
@@ -897,7 +952,7 @@ def sidebar_nav():
     if "page" not in st.session_state:
         st.session_state.page = "Dashboard"
 
-    pages = ["Dashboard", "Pendientes", "Kanban", "Bitácora"]
+    pages = ["Dashboard", "Pendientes",  "Bitácora"]
 
     if st.session_state.get("role") == "Administrador":
         pages += ["Usuarios", "Catálogos"]
@@ -907,7 +962,7 @@ def sidebar_nav():
             "Dashboard": "📊",
             "Pendientes": "📋",
             "Bitácora": "🧾",
-            "Kanban": "🗂️",
+            : "🗂️",
             "Usuarios": "👥",
             "Catálogos": "⚙️",
         }.get(page, "•")
@@ -1616,7 +1671,7 @@ def dashboard_page(data):
 # KANBAN
 # ==========================================================
 def kanban_page(data):
-    page_title("Kanban", "Vista rápida por estatus para seguimiento operativo sin cambiar la base de datos.")
+    page_title( "Vista rápida por estatus para seguimiento operativo sin cambiar la base de datos.")
     df = data["Pendientes"].copy()
     dff = apply_filters(df, key_prefix="kanban")
     estados = get_catalog(data, "Estatus", ["Pendiente", "En proceso", "En espera de respuesta", "Escalado", "Resuelto", "Cerrado"])
@@ -2051,7 +2106,7 @@ def main():
         dashboard_page(data)
     elif page == "Pendientes":
         pendientes_page(data)
-    elif page == "Kanban":
+    elif page == :
         kanban_page(data)
     elif page == "Bitácora":
         bitacora_page(data)
