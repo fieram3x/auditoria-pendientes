@@ -1337,7 +1337,7 @@ def render_report_table(data, dff):
     h = st.columns([1.05, .85, .72, 1.05, 1.25, .9, 1.05, .95, 1.95, .52])
     for col, title in zip(
         h,
-        ["ID", "Fecha", "Hotel", "Departamento", "Tipo", "Prioridad", "Estatus", "SLA", "Descripción", "Acciones"]
+        ["ID", "Fecha", "Hotel", "Departamento", "Tipo", "Prioridad", "Estatus", "SLA", "Descripción", "Acción"]
     ):
         with col:
             st.markdown(title)
