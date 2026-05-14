@@ -1086,7 +1086,7 @@ def options_from_filtered_df_multi(df, column, filters=None):
 
 
 def apply_dashboard_multifilters(df):
-    """Filtros del Dashboard en modo multifiltro dinámico."""
+    """Filtros del Dashboard en modo multifiltro dinámico, incluyendo rango de fecha."""
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
 
     cols_filter = {
@@ -1159,11 +1159,25 @@ def apply_dashboard_multifilters(df):
         )
         selected["Estatus"] = estatus
 
-    b1, b2, b3, b4 = st.columns([1.15, .95, 2.7, 1.35])
+    b1, b2, b3, b4, b5, b6 = st.columns([1.15, .95, .95, 2.1, 1.05, 1.25])
 
     with b1:
         texto_key = "dash_texto_multi"
         texto = st.text_input("Buscar", placeholder="ID, descripción...", key=texto_key)
+
+    with b2:
+        fecha_desde = st.date_input(
+            "Fecha desde",
+            value=st.session_state.get("dash_fecha_desde", None),
+            key="dash_fecha_desde"
+        )
+
+    with b3:
+        fecha_hasta = st.date_input(
+            "Fecha hasta",
+            value=st.session_state.get("dash_fecha_hasta", None),
+            key="dash_fecha_hasta"
+        )
 
     dff = df.copy()
 
@@ -1175,6 +1189,16 @@ def apply_dashboard_multifilters(df):
         if vals and col in dff.columns:
             dff = dff[dff[col].astype(str).isin(vals)]
 
+    if "Fecha Creación" in dff.columns and (fecha_desde or fecha_hasta):
+        fechas = pd.to_datetime(dff["Fecha Creación"], errors="coerce").dt.date
+
+        if fecha_desde:
+            dff = dff[fechas >= fecha_desde]
+            fechas = pd.to_datetime(dff["Fecha Creación"], errors="coerce").dt.date
+
+        if fecha_hasta:
+            dff = dff[fechas <= fecha_hasta]
+
     if texto:
         q = texto.lower().strip()
         mask = dff.astype(str).apply(
@@ -1183,20 +1207,25 @@ def apply_dashboard_multifilters(df):
         )
         dff = dff[mask]
 
-    with b2:
-        if st.button("↻ Limpiar", key="dash_clear_multifilters", use_container_width=True):
-            for k in list(cols_filter.values()) + [texto_key]:
-                st.session_state.pop(k, None)
-            st.rerun()
-
-    with b3:
-        active_filters = sum(1 for vals in selected.values() if vals) + (1 if texto else 0)
+    with b4:
+        active_filters = (
+            sum(1 for vals in selected.values() if vals)
+            + (1 if texto else 0)
+            + (1 if fecha_desde else 0)
+            + (1 if fecha_hasta else 0)
+        )
         st.markdown(
             f'<div class="small-note" style="margin-top:9px;">Filtros activos: <b>{active_filters}</b> · Mostrando <b>{len(dff)}</b> resultado(s)</div>',
             unsafe_allow_html=True
         )
 
-    with b4:
+    with b5:
+        if st.button("↻ Limpiar", key="dash_clear_multifilters", use_container_width=True):
+            for k in list(cols_filter.values()) + [texto_key, "dash_fecha_desde", "dash_fecha_hasta"]:
+                st.session_state.pop(k, None)
+            st.rerun()
+
+    with b6:
         st.download_button(
             "⬇ Exportar",
             filtered_excel_bytes(dff),
@@ -1207,7 +1236,6 @@ def apply_dashboard_multifilters(df):
 
     st.markdown('</div>', unsafe_allow_html=True)
     return dff
-
 
 def apply_filters(df, key_prefix="f"):
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
@@ -1616,12 +1644,15 @@ def executive_summary_cards(df):
 def dashboard_page(data):
     df = data["Pendientes"].copy()
     page_title("Dashboard", "Resumen ejecutivo de incidencias, SLA, estatus y comportamiento histórico.")
-    kpi_cards(df)
-    executive_summary_cards(df)
-    notification_center(df)
+
     dff = apply_dashboard_multifilters(df)
     dff_sla = add_sla_columns(dff)
+
+    kpi_cards(dff)
+    executive_summary_cards(dff)
+    notification_center(dff)
     render_dashboard_simple_table(dff_sla)
+
     st.markdown("<br>", unsafe_allow_html=True)
     g1, g2 = st.columns(2)
     with g1:
