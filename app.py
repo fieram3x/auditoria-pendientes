@@ -1427,12 +1427,16 @@ def dashboard_page(data):
 @st.dialog("➕ Nueva incidencia", width="large")
 def render_create_incidence_dialog(data):
     """Formulario de nueva incidencia en ventana flotante.
-    Siempre abre totalmente en blanco para registrar una incidencia nueva.
-    Ningún campo desplegable trae una opción seleccionada por defecto.
+    Los desplegables abren sin datos seleccionados.
     """
 
-    def catalog_options(category):
-        return get_catalog(data, category)
+    def blank_options(category):
+        vals = get_catalog(data, category)
+        vals = [v for v in vals if normalize_text(v)]
+        return [""] + vals
+
+    def show_blank(value):
+        return "" if value == "" else value
 
     with st.form("crear_inc_modal", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
@@ -1440,46 +1444,46 @@ def render_create_incidence_dialog(data):
         with c1:
             hotel = st.selectbox(
                 "Hotel",
-                catalog_options("Hotel"),
-                index=None,
-                placeholder="Seleccione hotel",
+                blank_options("Hotel"),
+                index=0,
+                format_func=show_blank,
                 key="new_hotel_modal"
             )
             depto = st.selectbox(
                 "Departamento",
-                catalog_options("Departamento"),
-                index=None,
-                placeholder="Seleccione departamento",
+                blank_options("Departamento"),
+                index=0,
+                format_func=show_blank,
                 key="new_depto_modal"
             )
             prioridad = st.selectbox(
                 "Prioridad",
-                catalog_options("Prioridad"),
-                index=None,
-                placeholder="Seleccione prioridad",
+                blank_options("Prioridad"),
+                index=0,
+                format_func=show_blank,
                 key="new_prioridad_modal"
             )
 
         with c2:
             tipo = st.selectbox(
                 "Tipo de Incidencia",
-                catalog_options("Tipo de Incidencia"),
-                index=None,
-                placeholder="Seleccione tipo de incidencia",
+                blank_options("Tipo de Incidencia"),
+                index=0,
+                format_func=show_blank,
                 key="new_tipo_modal"
             )
             impacto = st.selectbox(
                 "Impacto",
-                catalog_options("Impacto"),
-                index=None,
-                placeholder="Seleccione impacto",
+                blank_options("Impacto"),
+                index=0,
+                format_func=show_blank,
                 key="new_impacto_modal"
             )
             estatus = st.selectbox(
                 "Estatus inicial",
-                catalog_options("Estatus"),
-                index=None,
-                placeholder="Seleccione estatus",
+                blank_options("Estatus"),
+                index=0,
+                format_func=show_blank,
                 key="new_estatus_modal"
             )
 
@@ -1578,7 +1582,6 @@ def render_create_incidence_dialog(data):
             ]:
                 st.session_state.pop(k, None)
             st.rerun()
-
 
 def pendientes_page(data):
     create_clicked = page_title(
