@@ -1427,48 +1427,59 @@ def dashboard_page(data):
 @st.dialog("➕ Nueva incidencia", width="large")
 def render_create_incidence_dialog(data):
     """Formulario de nueva incidencia en ventana flotante.
-    Siempre inicia en blanco/default para registrar una incidencia nueva.
+    Siempre abre totalmente en blanco para registrar una incidencia nueva.
+    Ningún campo desplegable trae una opción seleccionada por defecto.
     """
+
+    def catalog_options(category):
+        return get_catalog(data, category)
+
     with st.form("crear_inc_modal", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
 
         with c1:
             hotel = st.selectbox(
                 "Hotel",
-                get_catalog(data, "Hotel"),
-                index=0,
+                catalog_options("Hotel"),
+                index=None,
+                placeholder="Seleccione hotel",
                 key="new_hotel_modal"
             )
             depto = st.selectbox(
                 "Departamento",
-                get_catalog(data, "Departamento"),
-                index=0,
+                catalog_options("Departamento"),
+                index=None,
+                placeholder="Seleccione departamento",
                 key="new_depto_modal"
             )
             prioridad = st.selectbox(
                 "Prioridad",
-                get_catalog(data, "Prioridad"),
-                index=0,
+                catalog_options("Prioridad"),
+                index=None,
+                placeholder="Seleccione prioridad",
                 key="new_prioridad_modal"
             )
 
         with c2:
             tipo = st.selectbox(
                 "Tipo de Incidencia",
-                get_catalog(data, "Tipo de Incidencia"),
-                index=0,
+                catalog_options("Tipo de Incidencia"),
+                index=None,
+                placeholder="Seleccione tipo de incidencia",
                 key="new_tipo_modal"
             )
             impacto = st.selectbox(
                 "Impacto",
-                get_catalog(data, "Impacto"),
-                index=0,
+                catalog_options("Impacto"),
+                index=None,
+                placeholder="Seleccione impacto",
                 key="new_impacto_modal"
             )
             estatus = st.selectbox(
                 "Estatus inicial",
-                get_catalog(data, "Estatus"),
-                index=0,
+                catalog_options("Estatus"),
+                index=None,
+                placeholder="Seleccione estatus",
                 key="new_estatus_modal"
             )
 
@@ -1493,8 +1504,23 @@ def render_create_incidence_dialog(data):
             cancel = st.form_submit_button("Cancelar")
 
         if submitted:
-            if not normalize_text(descripcion):
-                st.error("La descripción es obligatoria.")
+            campos_obligatorios = {
+                "Hotel": hotel,
+                "Departamento": depto,
+                "Tipo de Incidencia": tipo,
+                "Impacto": impacto,
+                "Prioridad": prioridad,
+                "Estatus inicial": estatus,
+                "Descripción": descripcion,
+            }
+
+            campos_vacios = [
+                nombre for nombre, valor in campos_obligatorios.items()
+                if not normalize_text(valor)
+            ]
+
+            if campos_vacios:
+                st.error("Debe completar los siguientes campos: " + ", ".join(campos_vacios) + ".")
             else:
                 pid = next_id(data["Pendientes"])
 
