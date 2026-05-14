@@ -1,6 +1,6 @@
 import os
 from io import BytesIO
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 import pandas as pd
 import plotly.express as px
@@ -30,6 +30,7 @@ USUARIOS_COLUMNS = ["Usuario", "Password", "Nombre", "Rol", "Estado"]
 CATALOGOS_COLUMNS = ["Categoria", "Valor"]
 
 CLOSED_STATUS = ["Resuelto", "Cerrado"]
+SLA_DAYS_BY_PRIORITY = {"Crítica": 1, "Critica": 1, "Alta": 2, "Media": 3, "Baja": 5}
 
 
 st.set_page_config(
@@ -414,6 +415,83 @@ hr {
     border-color:var(--border);
 }
 
+
+.priority-dot {
+    width:10px;
+    height:10px;
+    border-radius:999px;
+    display:inline-block;
+    margin-right:6px;
+    background:#94a3b8;
+}
+.priority-dot.critica { background:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.10); }
+.priority-dot.alta { background:#f97316; box-shadow:0 0 0 4px rgba(249,115,22,.10); }
+.priority-dot.media { background:#eab308; box-shadow:0 0 0 4px rgba(234,179,8,.12); }
+.priority-dot.baja { background:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.10); }
+
+.table-row-wrap.row-overdue {
+    border-left:5px solid #dc2626;
+    background:linear-gradient(90deg,#fff1f2,#ffffff 26%);
+}
+.table-row-wrap.row-warning {
+    border-left:5px solid #f97316;
+    background:linear-gradient(90deg,#fff7ed,#ffffff 26%);
+}
+.table-row-wrap.row-ok { border-left:5px solid #22c55e; }
+.table-row-wrap.row-critical { box-shadow: inset 0 0 0 1px rgba(220,38,38,.18); }
+
+.alert-card {
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:14px 16px;
+    box-shadow:0 3px 14px rgba(15,23,42,.045);
+    margin:.75rem 0;
+}
+.alert-item {
+    border-radius:14px;
+    padding:10px 12px;
+    margin-top:8px;
+    background:#f8fbff;
+    border:1px solid #e5edf7;
+    font-size:13px;
+}
+.alert-danger { background:#fff1f2; border-color:#fecdd3; }
+.alert-warn { background:#fff7ed; border-color:#fed7aa; }
+
+.kanban-column {
+    background:#ffffff;
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:12px;
+    box-shadow:0 3px 14px rgba(15,23,42,.04);
+    min-height:520px;
+}
+.kanban-title {
+    font-weight:900;
+    color:#0f172a;
+    margin-bottom:8px;
+    display:flex;
+    justify-content:space-between;
+}
+.kanban-card {
+    background:#f8fbff;
+    border:1px solid #e5edf7;
+    border-radius:15px;
+    padding:12px;
+    margin:10px 0;
+    box-shadow:0 2px 8px rgba(15,23,42,.035);
+}
+.kanban-card.overdue { border-left:5px solid #dc2626; background:#fff1f2; }
+.kanban-card.warning { border-left:5px solid #f97316; background:#fff7ed; }
+
+.sticky-head {
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    backdrop-filter: blur(10px);
+}
+
 @media (max-width: 1200px){
     .title h1{font-size:22px;}
     .user-pill{display:none;}
@@ -651,6 +729,99 @@ def close_status_if_needed(data, idx, new_status):
         data["Pendientes"].loc[idx, "Fecha Cierre"] = ""
 
 
+def parse_any_date(value):
+    if pd.isna(value) or value in [None, ""]:
+        return pd.NaT
+    return pd.to_datetime(value, errors="coerce")
+
+
+def suggested_due_date(priority, created=None):
+    base = parse_any_date(created)
+    if pd.isna(base):
+        base = pd.Timestamp(date.today())
+    days = SLA_DAYS_BY_PRIORITY.get(normalize_text(priority), 3)
+    return (base + pd.Timedelta(days=days)).date()
+
+
+def sla_info(row):
+    estatus = normalize_text(row.get("Estatus", ""))
+    if estatus in CLOSED_STATUS:
+        return {"label": "Cerrado", "class": "ok", "days": None}
+
+    due = parse_any_date(row.get("Fecha Compromiso", ""))
+    if pd.isna(due):
+        due = pd.Timestamp(suggested_due_date(row.get("Prioridad", "Media"), row.get("Fecha Creación", "")))
+
+    today = pd.Timestamp(date.today())
+    days = int((due.normalize() - today).days)
+
+    if days < 0:
+        return {"label": f"Vencido {abs(days)}d", "class": "overdue", "days": days}
+    if days == 0:
+        return {"label": "Vence hoy", "class": "warning", "days": days}
+    if days <= 1:
+        return {"label": f"Vence en {days}d", "class": "warning", "days": days}
+    return {"label": f"En tiempo ({days}d)", "class": "ok", "days": days}
+
+
+def priority_dot(priority):
+    cls = slug(priority)
+    if cls in ["critica", "crítica"]:
+        cls = "critica"
+    return f'<span class="priority-dot {cls}"></span>'
+
+
+def add_sla_columns(df):
+    dff = df.copy()
+    if dff.empty:
+        dff["SLA"] = []
+        dff["Días SLA"] = []
+        return dff
+    info = dff.apply(sla_info, axis=1)
+    dff["SLA"] = info.apply(lambda x: x["label"])
+    dff["Días SLA"] = info.apply(lambda x: x["days"] if x["days"] is not None else "")
+    return dff
+
+
+def notification_center(df, max_items=5):
+    if df.empty:
+        return
+    open_df = df[~df["Estatus"].astype(str).isin(CLOSED_STATUS)].copy()
+    if open_df.empty:
+        return
+
+    alerts = []
+    for _, r in open_df.iterrows():
+        info = sla_info(r)
+        is_critical = normalize_text(r.get("Prioridad", "")) in ["Crítica", "Critica"]
+        if info["class"] in ["overdue", "warning"] or is_critical:
+            alerts.append((info["days"] if info["days"] is not None else 999, is_critical, r, info))
+
+    alerts = sorted(alerts, key=lambda x: (x[0], not x[1]))[:max_items]
+    if not alerts:
+        return
+
+    st.markdown('<div class="alert-card"><div class="detail-title">🔔 Alertas operativas</div>', unsafe_allow_html=True)
+    for _, is_critical, r, info in alerts:
+        level = "alert-danger" if info["class"] == "overdue" or is_critical else "alert-warn"
+        st.markdown(
+            f'''<div class="alert-item {level}">
+                <b>{r.get("ID", "")}</b> · {r.get("Hotel", "")} · {badge(r.get("Prioridad", ""))} · <b>{info["label"]}</b><br>
+                <span style="color:#64748b;">{str(r.get("Descripción", ""))[:120]}</span>
+            </div>''',
+            unsafe_allow_html=True
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def register_change(data, pending_id, action, comment, old_state, new_state):
+    bit = pd.DataFrame(
+        [[pending_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), st.session_state.get("user", ""), action, comment, old_state, new_state]],
+        columns=BITACORA_COLUMNS
+    )
+    data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
+
+
 # ==========================================================
 # LOGIN
 # ==========================================================
@@ -702,7 +873,7 @@ def login_view(data):
 def header():
     st.markdown(
         f"""
-        <div class="app-shell">
+        <div class="app-shell sticky-head">
             <div class="app-header">
                 <div class="brand">
                     <div class="logo">🛡️</div>
@@ -726,7 +897,7 @@ def sidebar_nav():
     if "page" not in st.session_state:
         st.session_state.page = "Dashboard"
 
-    pages = ["Dashboard", "Pendientes", "Bitácora"]
+    pages = ["Dashboard", "Pendientes", "Kanban", "Bitácora"]
 
     if st.session_state.get("role") == "Administrador":
         pages += ["Usuarios", "Catálogos"]
@@ -736,6 +907,7 @@ def sidebar_nav():
             "Dashboard": "📊",
             "Pendientes": "📋",
             "Bitácora": "🧾",
+            "Kanban": "🗂️",
             "Usuarios": "👥",
             "Catálogos": "⚙️",
         }.get(page, "•")
@@ -1108,10 +1280,10 @@ def render_report_table(data, dff):
     st.markdown('<div class="report-card">', unsafe_allow_html=True)
     st.markdown('<div class="table-header">', unsafe_allow_html=True)
 
-    h = st.columns([1.05, .9, .75, 1.15, 1.4, .85, 1.15, 2.2, .52])
+    h = st.columns([1.05, .85, .72, 1.05, 1.25, .9, 1.05, .95, 1.95, .52])
     for col, title in zip(
         h,
-        ["ID", "Fecha", "Hotel", "Departamento", "Tipo", "Prioridad", "Estatus", "Descripción", "Acciones"]
+        ["ID", "Fecha", "Hotel", "Departamento", "Tipo", "Prioridad", "Estatus", "SLA", "Descripción", "Acciones"]
     ):
         with col:
             st.markdown(title)
@@ -1137,8 +1309,12 @@ def render_report_table(data, dff):
             .replace("5930 - ", "")
         )
 
-        st.markdown('<div class="table-row-wrap">', unsafe_allow_html=True)
-        c = st.columns([1.05, .9, .75, 1.15, 1.4, .85, 1.15, 2.2, .52])
+        sla = sla_info(row)
+        row_classes = f"table-row-wrap row-{sla['class']}"
+        if normalize_text(row["Prioridad"]) in ["Crítica", "Critica"]:
+            row_classes += " row-critical"
+        st.markdown(f'<div class="{row_classes}">', unsafe_allow_html=True)
+        c = st.columns([1.05, .85, .72, 1.05, 1.25, .9, 1.05, .95, 1.95, .52])
 
         with c[0]:
             st.markdown(f'<div class="cell-text"><b>{rid}</b></div>', unsafe_allow_html=True)
@@ -1151,12 +1327,14 @@ def render_report_table(data, dff):
         with c[4]:
             st.markdown(f'<div class="cell-text">{row["Tipo de Incidencia"]}</div>', unsafe_allow_html=True)
         with c[5]:
-            st.markdown(badge(row["Prioridad"]), unsafe_allow_html=True)
+            st.markdown(priority_dot(row["Prioridad"]) + badge(row["Prioridad"]), unsafe_allow_html=True)
         with c[6]:
             st.markdown(badge(row["Estatus"]), unsafe_allow_html=True)
         with c[7]:
-            st.markdown(f'<div class="cell-text">{desc_short}</div>', unsafe_allow_html=True)
+            st.markdown(badge(sla["label"]), unsafe_allow_html=True)
         with c[8]:
+            st.markdown(f'<div class="cell-text">{desc_short}</div>', unsafe_allow_html=True)
+        with c[9]:
             with st.popover("⋮"):
                 st.markdown('<div class="action-menu-note"><b>Acciones</b></div>', unsafe_allow_html=True)
 
@@ -1201,12 +1379,13 @@ def render_edit_panel(data, estados):
 
     idx = hit.index[0]
     row = hit.iloc[0]
+    prioridades = get_catalog(data, "Prioridad", ["Baja", "Media", "Alta", "Crítica"])
 
     st.markdown(f"**Incidencia:** `{edit_id}`")
-    st.caption("Actualiza el estatus y registra el comentario de seguimiento.")
+    st.caption("Actualiza campos clave. Cada cambio quedará registrado en la bitácora.")
 
     with st.form(f"form_edit_{edit_id}"):
-        c1, c2 = st.columns([.34, .66])
+        c1, c2, c3 = st.columns([.32, .32, .36])
 
         with c1:
             current_status = str(row["Estatus"])
@@ -1214,42 +1393,54 @@ def render_edit_panel(data, estados):
             nuevo_estatus = st.selectbox("Nuevo estatus", estados, index=pos)
 
         with c2:
-            comentario = st.text_area(
-                "Comentario de actualización",
-                placeholder="Agrega el comentario de seguimiento...",
-                height=110
-            )
+            current_priority = str(row["Prioridad"])
+            ppos = prioridades.index(current_priority) if current_priority in prioridades else 0
+            nueva_prioridad = st.selectbox("Prioridad", prioridades, index=ppos)
+
+        with c3:
+            current_due = parse_any_date(row.get("Fecha Compromiso", ""))
+            default_due = current_due.date() if not pd.isna(current_due) else suggested_due_date(nueva_prioridad, row.get("Fecha Creación", ""))
+            nueva_fecha = st.date_input("Fecha compromiso", value=default_due)
+
+        nueva_descripcion = st.text_area("Descripción", value=str(row.get("Descripción", "")), height=110)
+        comentario = st.text_area("Comentario de actualización", placeholder="Agrega el comentario de seguimiento...", height=90)
 
         b1, b2 = st.columns([.25, .75])
-
         with b1:
             guardar = st.form_submit_button("Guardar", type="primary", use_container_width=True)
         with b2:
             cancelar = st.form_submit_button("Cancelar")
 
         if guardar:
-            anterior = str(data["Pendientes"].loc[idx, "Estatus"])
+            cambios = []
+            anterior_estatus = str(data["Pendientes"].loc[idx, "Estatus"])
+            anterior_prioridad = str(data["Pendientes"].loc[idx, "Prioridad"])
+            anterior_fecha = str(data["Pendientes"].loc[idx, "Fecha Compromiso"])
+            anterior_desc = str(data["Pendientes"].loc[idx, "Descripción"])
+            nueva_fecha_txt = nueva_fecha.strftime("%Y-%m-%d") if nueva_fecha else ""
+
+            if anterior_estatus != str(nuevo_estatus): cambios.append(f"Estatus: {anterior_estatus} → {nuevo_estatus}")
+            if anterior_prioridad != str(nueva_prioridad): cambios.append(f"Prioridad: {anterior_prioridad} → {nueva_prioridad}")
+            if anterior_fecha != nueva_fecha_txt: cambios.append(f"Fecha compromiso: {anterior_fecha or 'Sin fecha'} → {nueva_fecha_txt}")
+            if anterior_desc != str(nueva_descripcion): cambios.append("Descripción actualizada")
+
+            if not cambios and not comentario.strip():
+                st.warning("No hay cambios ni comentario para guardar.")
+                return
+
             data["Pendientes"].loc[idx, "Estatus"] = str(nuevo_estatus)
+            data["Pendientes"].loc[idx, "Prioridad"] = str(nueva_prioridad)
+            data["Pendientes"].loc[idx, "Fecha Compromiso"] = nueva_fecha_txt
+            data["Pendientes"].loc[idx, "Descripción"] = str(nueva_descripcion).strip()
             data["Pendientes"].loc[idx, "Última Actualización"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             close_status_if_needed(data, idx, nuevo_estatus)
 
-            accion = "Cambio de estatus" if nuevo_estatus != anterior else "Comentario"
+            accion = "Actualización de incidencia" if cambios else "Comentario"
+            detalle_cambios = " | ".join(cambios) if cambios else "Sin cambios de campos."
             texto = comentario.strip() if comentario.strip() else "Actualización registrada."
+            comentario_final = f"{texto}\nCambios: {detalle_cambios}"
+            register_change(data, edit_id, accion, comentario_final, anterior_estatus, nuevo_estatus)
 
-            bit = pd.DataFrame(
-                [[
-                    edit_id,
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    st.session_state.get("user", ""),
-                    accion,
-                    texto,
-                    anterior,
-                    nuevo_estatus
-                ]],
-                columns=BITACORA_COLUMNS
-            )
-
-            data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
             save_data(data)
             st.session_state.pop("edit_id", None)
             st.session_state.pop("show_bitacora_id", None)
@@ -1309,7 +1500,7 @@ def render_dashboard_simple_table(dff):
 
     cols = [
         "ID", "Fecha Creación", "Hotel", "Departamento", "Tipo de Incidencia",
-        "Prioridad", "Estatus", "Fecha Compromiso", "Descripción"
+        "Prioridad", "Estatus", "SLA", "Fecha Compromiso", "Descripción"
     ]
 
     table_df = dff[[c for c in cols if c in dff.columns]].copy()
@@ -1333,94 +1524,130 @@ def render_dashboard_simple_table(dff):
 # ==========================================================
 def kpi_cards(df):
     total = len(df)
-    en_proceso = len(df[df["Estatus"].astype(str).eq("En proceso")])
-    completadas = len(df[df["Estatus"].astype(str).isin(CLOSED_STATUS)])
-    pendientes = len(df[~df["Estatus"].astype(str).isin(CLOSED_STATUS)])
-
+    en_proceso = len(df[df["Estatus"].astype(str).eq("En proceso")]) if not df.empty else 0
+    completadas = len(df[df["Estatus"].astype(str).isin(CLOSED_STATUS)]) if not df.empty else 0
+    abiertas = len(df[~df["Estatus"].astype(str).isin(CLOSED_STATUS)]) if not df.empty else 0
     vencidas = 0
-    if "Fecha Compromiso" in df.columns:
-        fc = pd.to_datetime(df["Fecha Compromiso"], errors="coerce")
-        vencidas = int(((fc < pd.Timestamp(date.today())) & (~df["Estatus"].astype(str).isin(CLOSED_STATUS))).sum())
-
-    vals = [
-        ("Total Pendientes", total, "Todas las incidencias", "📋"),
-        ("En Proceso", en_proceso, f"{(en_proceso / total * 100 if total else 0):.1f}% del total", "⏱️"),
-        ("Abiertas", pendientes, f"{(pendientes / total * 100 if total else 0):.1f}% del total", "🕒"),
-        ("Vencidas", vencidas, f"{(vencidas / total * 100 if total else 0):.1f}% del total", "⚠️"),
-        ("Completadas", completadas, f"{(completadas / total * 100 if total else 0):.1f}% del total", "✅"),
-    ]
-
+    if not df.empty:
+        for _, r in df.iterrows():
+            if sla_info(r)["class"] == "overdue":
+                vencidas += 1
+    vals = [("Total", total, "Incidencias registradas", "📋"), ("Abiertas", abiertas, f"{(abiertas / total * 100 if total else 0):.1f}% del total", "🕒"), ("En proceso", en_proceso, f"{(en_proceso / total * 100 if total else 0):.1f}% del total", "⏱️"), ("Vencidas", vencidas, f"{(vencidas / total * 100 if total else 0):.1f}% del total", "⚠️"), ("Completadas", completadas, f"{(completadas / total * 100 if total else 0):.1f}% del total", "✅")]
     cols = st.columns(5)
     for col, (label, value, sub, icon) in zip(cols, vals):
         with col:
-            st.markdown(
-                f"""
-                <div class="kpi-card">
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div>
-                        <div class="kpi-label">{label}</div>
-                        <div class="kpi-value">{value}</div>
-                        <div class="kpi-sub">{sub}</div>
-                    </div>
-                    <div class="kpi-icon">{icon}</div>
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            st.markdown(f'''<div class="kpi-card"><div style="display:flex;justify-content:space-between;align-items:center;"><div><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div><div class="kpi-sub">{sub}</div></div><div class="kpi-icon">{icon}</div></div></div>''', unsafe_allow_html=True)
+
+
+def executive_summary_cards(df):
+    if df.empty:
+        return
+    top_depto = df["Departamento"].value_counts().idxmax() if "Departamento" in df and not df.empty else "-"
+    top_hotel = df["Hotel"].value_counts().idxmax() if "Hotel" in df and not df.empty else "-"
+    fc = pd.to_datetime(df.get("Fecha Creación", ""), errors="coerce")
+    current_month = fc.dt.to_period("M") == pd.Timestamp(date.today()).to_period("M")
+    cerradas_mes = df[current_month & df["Estatus"].astype(str).isin(CLOSED_STATUS)].shape[0]
+    res_days = []
+    for _, r in df[df["Estatus"].astype(str).isin(CLOSED_STATUS)].iterrows():
+        f1 = parse_any_date(r.get("Fecha Creación", "")); f2 = parse_any_date(r.get("Fecha Cierre", ""))
+        if not pd.isna(f1) and not pd.isna(f2): res_days.append(max(0, int((f2 - f1).days)))
+    avg_days = sum(res_days) / len(res_days) if res_days else 0
+    vals = [("Área con más incidencias", top_depto, "Concentración operativa"), ("Hotel con más incidencias", top_hotel, "Mayor volumen registrado"), ("Cerradas este mes", cerradas_mes, "Productividad mensual"), ("Tiempo prom. resolución", f"{avg_days:.1f} días", "Solo incidencias cerradas")]
+    cols = st.columns(4)
+    for col, (label, value, sub) in zip(cols, vals):
+        with col:
+            st.markdown(f'''<div class="kpi-card"><div class="kpi-label">{label}</div><div style="font-size:20px;font-weight:900;color:#0f172a;line-height:1.15;">{value}</div><div class="kpi-sub">{sub}</div></div>''', unsafe_allow_html=True)
 
 
 def dashboard_page(data):
     df = data["Pendientes"].copy()
-
-    page_title("Dashboard", "Resumen ejecutivo de incidencias, estatus y comportamiento por área.")
+    page_title("Dashboard", "Resumen ejecutivo de incidencias, SLA, estatus y comportamiento histórico.")
     kpi_cards(df)
-
+    executive_summary_cards(df)
+    notification_center(df)
     dff = apply_dashboard_multifilters(df)
-    render_dashboard_simple_table(dff)
-
+    dff_sla = add_sla_columns(dff)
+    render_dashboard_simple_table(dff_sla)
     st.markdown("<br>", unsafe_allow_html=True)
     g1, g2 = st.columns(2)
-
     with g1:
         st.markdown('<div class="detail-card"><div class="detail-title">Incidencias por departamento</div>', unsafe_allow_html=True)
         if not dff.empty:
             chart_df = dff.groupby("Departamento").size().reset_index(name="Cantidad")
             fig = px.bar(chart_df, x="Departamento", y="Cantidad", text="Cantidad")
-            fig.update_layout(
-                margin=dict(l=10, r=10, t=10, b=10),
-                height=310,
-                paper_bgcolor="white",
-                plot_bgcolor="white"
-            )
+            fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.caption("Sin datos para graficar.")
+        else: st.caption("Sin datos para graficar.")
         st.markdown('</div>', unsafe_allow_html=True)
-
     with g2:
         st.markdown('<div class="detail-card"><div class="detail-title">Tipos de incidencia más comunes</div>', unsafe_allow_html=True)
         if not dff.empty:
-            top = (
-                dff.groupby("Tipo de Incidencia")
-                .size()
-                .reset_index(name="Cantidad")
-                .sort_values("Cantidad", ascending=False)
-                .head(8)
-            )
+            top = dff.groupby("Tipo de Incidencia").size().reset_index(name="Cantidad").sort_values("Cantidad", ascending=False).head(8)
             fig = px.bar(top, x="Cantidad", y="Tipo de Incidencia", orientation="h", text="Cantidad")
-            fig.update_layout(
-                margin=dict(l=10, r=10, t=10, b=10),
-                height=310,
-                paper_bgcolor="white",
-                plot_bgcolor="white"
-            )
+            fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.caption("Sin datos para graficar.")
+        else: st.caption("Sin datos para graficar.")
+        st.markdown('</div>', unsafe_allow_html=True)
+    g3, g4 = st.columns(2)
+    with g3:
+        st.markdown('<div class="detail-card"><div class="detail-title">SLA por estado</div>', unsafe_allow_html=True)
+        if not dff_sla.empty:
+            sla_chart = dff_sla.groupby("SLA").size().reset_index(name="Cantidad")
+            fig = px.pie(sla_chart, names="SLA", values="Cantidad", hole=.45)
+            fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white")
+            st.plotly_chart(fig, use_container_width=True)
+        else: st.caption("Sin datos para graficar.")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with g4:
+        st.markdown('<div class="detail-card"><div class="detail-title">Tendencia mensual</div>', unsafe_allow_html=True)
+        if not dff.empty:
+            temp = dff.copy(); temp["Mes"] = pd.to_datetime(temp["Fecha Creación"], errors="coerce").dt.to_period("M").astype(str); temp = temp[temp["Mes"] != "NaT"]
+            if not temp.empty:
+                month_df = temp.groupby("Mes").size().reset_index(name="Cantidad")
+                fig = px.line(month_df, x="Mes", y="Cantidad", markers=True)
+                fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
+                st.plotly_chart(fig, use_container_width=True)
+            else: st.caption("Sin fechas válidas para graficar.")
+        else: st.caption("Sin datos para graficar.")
         st.markdown('</div>', unsafe_allow_html=True)
 
 
+# ==========================================================
+# KANBAN
+# ==========================================================
+def kanban_page(data):
+    page_title("Kanban", "Vista rápida por estatus para seguimiento operativo sin cambiar la base de datos.")
+    df = data["Pendientes"].copy()
+    dff = apply_filters(df, key_prefix="kanban")
+    estados = get_catalog(data, "Estatus", ["Pendiente", "En proceso", "En espera de respuesta", "Escalado", "Resuelto", "Cerrado"])
+    visible_estados = [e for e in estados if e in dff["Estatus"].astype(str).unique().tolist()] or estados[:4]
+    cols = st.columns(min(4, len(visible_estados)))
+    for i, est in enumerate(visible_estados[:4]):
+        col_df = dff[dff["Estatus"].astype(str) == est].copy()
+        with cols[i]:
+            st.markdown(f'<div class="kanban-column"><div class="kanban-title"><span>{est}</span><span>{len(col_df)}</span></div>', unsafe_allow_html=True)
+            if col_df.empty: st.caption("Sin incidencias.")
+            for _, r in col_df.head(12).iterrows():
+                info = sla_info(r)
+                cls = "overdue" if info["class"] == "overdue" else "warning" if info["class"] == "warning" else ""
+                st.markdown(f'''<div class="kanban-card {cls}"><b>{r.get("ID", "")}</b><br><span style="font-size:12px;color:#64748b;">{r.get("Hotel", "")} · {r.get("Departamento", "")}</span><br>{priority_dot(r.get("Prioridad", ""))}{badge(r.get("Prioridad", ""))} {badge(info["label"])}<div style="font-size:12.5px;color:#334155;margin-top:8px;">{str(r.get("Descripción", ""))[:95]}</div></div>''', unsafe_allow_html=True)
+                with st.popover("Mover / ver"):
+                    new_status = st.selectbox("Cambiar estatus", estados, index=estados.index(est) if est in estados else 0, key=f"kanban_status_{r.get('ID')}")
+                    comment = st.text_input("Comentario", key=f"kanban_comment_{r.get('ID')}", placeholder="Opcional")
+                    if st.button("Guardar cambio", key=f"kanban_save_{r.get('ID')}", use_container_width=True):
+                        hit = data["Pendientes"][data["Pendientes"]["ID"].astype(str) == str(r.get("ID"))]
+                        if not hit.empty:
+                            idx = hit.index[0]; old = str(data["Pendientes"].loc[idx, "Estatus"])
+                            data["Pendientes"].loc[idx, "Estatus"] = new_status
+                            data["Pendientes"].loc[idx, "Última Actualización"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            close_status_if_needed(data, idx, new_status)
+                            register_change(data, str(r.get("ID")), "Cambio desde Kanban", comment.strip() or "Estatus actualizado desde vista Kanban.", old, new_status)
+                            save_data(data); clear_cache_and_rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ==========================================================
+# PENDIENTES
 # ==========================================================
 # PENDIENTES
 # ==========================================================
@@ -1538,7 +1765,7 @@ def render_create_incidence_dialog(data):
                         impacto,
                         prioridad,
                         estatus,
-                        fecha_comp.strftime("%Y-%m-%d") if fecha_comp else "",
+                        fecha_comp.strftime("%Y-%m-%d") if fecha_comp else suggested_due_date(prioridad, datetime.now().strftime("%Y-%m-%d")).strftime("%Y-%m-%d"),
                         descripcion.strip(),
                         "",
                         datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1824,6 +2051,8 @@ def main():
         dashboard_page(data)
     elif page == "Pendientes":
         pendientes_page(data)
+    elif page == "Kanban":
+        kanban_page(data)
     elif page == "Bitácora":
         bitacora_page(data)
     elif page == "Usuarios" and st.session_state.get("role") == "Administrador":
