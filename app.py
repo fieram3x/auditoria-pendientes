@@ -1424,6 +1424,136 @@ def dashboard_page(data):
 # ==========================================================
 # PENDIENTES
 # ==========================================================
+@st.dialog("➕ Nueva incidencia", width="large")
+def render_create_incidence_dialog(data):
+    """Formulario de nueva incidencia en ventana flotante.
+    Siempre inicia en blanco/default para registrar una incidencia nueva.
+    """
+    with st.form("crear_inc_modal", clear_on_submit=True):
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            hotel = st.selectbox(
+                "Hotel",
+                get_catalog(data, "Hotel"),
+                index=0,
+                key="new_hotel_modal"
+            )
+            depto = st.selectbox(
+                "Departamento",
+                get_catalog(data, "Departamento"),
+                index=0,
+                key="new_depto_modal"
+            )
+            prioridad = st.selectbox(
+                "Prioridad",
+                get_catalog(data, "Prioridad"),
+                index=0,
+                key="new_prioridad_modal"
+            )
+
+        with c2:
+            tipo = st.selectbox(
+                "Tipo de Incidencia",
+                get_catalog(data, "Tipo de Incidencia"),
+                index=0,
+                key="new_tipo_modal"
+            )
+            impacto = st.selectbox(
+                "Impacto",
+                get_catalog(data, "Impacto"),
+                index=0,
+                key="new_impacto_modal"
+            )
+            estatus = st.selectbox(
+                "Estatus inicial",
+                get_catalog(data, "Estatus"),
+                index=0,
+                key="new_estatus_modal"
+            )
+
+        with c3:
+            fecha_comp = st.date_input(
+                "Fecha compromiso",
+                value=None,
+                key="new_fecha_modal"
+            )
+            descripcion = st.text_area(
+                "Descripción",
+                value="",
+                height=100,
+                placeholder="Detalle la incidencia...",
+                key="new_descripcion_modal"
+            )
+
+        b1, b2 = st.columns([.28, .72])
+        with b1:
+            submitted = st.form_submit_button("Guardar", type="primary", use_container_width=True)
+        with b2:
+            cancel = st.form_submit_button("Cancelar")
+
+        if submitted:
+            if not normalize_text(descripcion):
+                st.error("La descripción es obligatoria.")
+            else:
+                pid = next_id(data["Pendientes"])
+
+                new_row = pd.DataFrame(
+                    [[
+                        pid,
+                        datetime.now().strftime("%Y-%m-%d"),
+                        hotel,
+                        depto,
+                        tipo,
+                        impacto,
+                        prioridad,
+                        estatus,
+                        fecha_comp.strftime("%Y-%m-%d") if fecha_comp else "",
+                        descripcion.strip(),
+                        "",
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ]],
+                    columns=PENDIENTES_COLUMNS
+                )
+
+                data["Pendientes"] = pd.concat([data["Pendientes"], new_row], ignore_index=True)
+
+                bit = pd.DataFrame(
+                    [[
+                        pid,
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        st.session_state.get("user", ""),
+                        "Creación",
+                        "Incidencia creada.",
+                        "",
+                        estatus
+                    ]],
+                    columns=BITACORA_COLUMNS
+                )
+
+                data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
+                save_data(data)
+
+                for k in [
+                    "show_create", "new_hotel_modal", "new_depto_modal", "new_prioridad_modal",
+                    "new_tipo_modal", "new_impacto_modal", "new_estatus_modal",
+                    "new_fecha_modal", "new_descripcion_modal"
+                ]:
+                    st.session_state.pop(k, None)
+
+                st.success("Incidencia creada correctamente.")
+                clear_cache_and_rerun()
+
+        if cancel:
+            for k in [
+                "show_create", "new_hotel_modal", "new_depto_modal", "new_prioridad_modal",
+                "new_tipo_modal", "new_impacto_modal", "new_estatus_modal",
+                "new_fecha_modal", "new_descripcion_modal"
+            ]:
+                st.session_state.pop(k, None)
+            st.rerun()
+
+
 def pendientes_page(data):
     create_clicked = page_title(
         "Pendientes / Incidencias",
@@ -1433,77 +1563,19 @@ def pendientes_page(data):
     )
 
     if create_clicked:
-        st.session_state["show_create"] = not st.session_state.get("show_create", False)
+        st.session_state.pop("edit_id", None)
+        st.session_state.pop("show_bitacora_id", None)
+        for k in [
+            "new_hotel_modal", "new_depto_modal", "new_prioridad_modal",
+            "new_tipo_modal", "new_impacto_modal", "new_estatus_modal",
+            "new_fecha_modal", "new_descripcion_modal"
+        ]:
+            st.session_state.pop(k, None)
+        st.session_state["show_create"] = True
+        st.rerun()
 
     if st.session_state.get("show_create", False):
-        st.markdown('<div class="edit-panel">', unsafe_allow_html=True)
-        with st.form("crear_inc", clear_on_submit=True):
-            st.markdown("#### Nueva incidencia")
-
-            c1, c2, c3 = st.columns(3)
-
-            with c1:
-                hotel = st.selectbox("Hotel", get_catalog(data, "Hotel"))
-                depto = st.selectbox("Departamento", get_catalog(data, "Departamento"))
-                prioridad = st.selectbox("Prioridad", get_catalog(data, "Prioridad"))
-
-            with c2:
-                tipo = st.selectbox("Tipo de Incidencia", get_catalog(data, "Tipo de Incidencia"))
-                impacto = st.selectbox("Impacto", get_catalog(data, "Impacto"))
-                estatus = st.selectbox("Estatus inicial", get_catalog(data, "Estatus"), index=0)
-
-            with c3:
-                fecha_comp = st.date_input("Fecha compromiso", value=None)
-                descripcion = st.text_area("Descripción", height=100)
-
-            submitted = st.form_submit_button("Guardar incidencia", type="primary")
-
-            if submitted:
-                if not normalize_text(descripcion):
-                    st.error("La descripción es obligatoria.")
-                else:
-                    pid = next_id(data["Pendientes"])
-
-                    new_row = pd.DataFrame(
-                        [[
-                            pid,
-                            datetime.now().strftime("%Y-%m-%d"),
-                            hotel,
-                            depto,
-                            tipo,
-                            impacto,
-                            prioridad,
-                            estatus,
-                            fecha_comp.strftime("%Y-%m-%d") if fecha_comp else "",
-                            descripcion.strip(),
-                            "",
-                            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        ]],
-                        columns=PENDIENTES_COLUMNS
-                    )
-
-                    data["Pendientes"] = pd.concat([data["Pendientes"], new_row], ignore_index=True)
-
-                    bit = pd.DataFrame(
-                        [[
-                            pid,
-                            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            st.session_state.get("user", ""),
-                            "Creación",
-                            "Incidencia creada.",
-                            "",
-                            estatus
-                        ]],
-                        columns=BITACORA_COLUMNS
-                    )
-
-                    data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
-
-                    save_data(data)
-                    st.session_state["show_create"] = False
-                    st.success("Incidencia creada correctamente.")
-                    clear_cache_and_rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+        render_create_incidence_dialog(data)
 
     dff = apply_filters(data["Pendientes"].copy(), key_prefix="pend")
     render_report_table(data, dff)
