@@ -2105,8 +2105,7 @@ def main():
         dashboard_page(data)
     elif page == "Pendientes":
         pendientes_page(data)
-    elif page == :
-        kanban_page(data)
+    kanban_page(data)
     elif page == "Bitácora":
         bitacora_page(data)
     elif page == "Usuarios" and st.session_state.get("role") == "Administrador":
