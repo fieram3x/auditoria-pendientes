@@ -962,7 +962,6 @@ def sidebar_nav():
             "Dashboard": "📊",
             "Pendientes": "📋",
             "Bitácora": "🧾",
-            : "🗂️",
             "Usuarios": "👥",
             "Catálogos": "⚙️",
         }.get(page, "•")
