@@ -917,20 +917,24 @@ def dashboard_chart_figures(dff, dff_sla):
         chart_df = dff.groupby("Departamento").size().reset_index(name="Cantidad")
         fig = px.bar(chart_df, x="Departamento", y="Cantidad", text="Cantidad", color="Departamento", color_discrete_sequence=DASHBOARD_COLORS)
         fig.update_traces(marker_line_color="white", marker_line_width=1.5, textfont_color="#0f172a")
-        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
+        fig.update_layout(margin=dict(l=28, r=16, t=8, b=34), height=340, paper_bgcolor="white", plot_bgcolor="white", showlegend=False, font=dict(color="#334155", size=11))
+        fig.update_xaxes(title=None, tickangle=0, automargin=True, tickfont=dict(size=10))
+        fig.update_yaxes(title=None, automargin=True, gridcolor="#e5edf7", tickfont=dict(size=10))
         figures.append(("Incidencias por departamento", fig))
 
         top = dff.groupby("Tipo de Incidencia").size().reset_index(name="Cantidad").sort_values("Cantidad", ascending=False).head(8)
         fig = px.bar(top, x="Cantidad", y="Tipo de Incidencia", orientation="h", text="Cantidad", color="Tipo de Incidencia", color_discrete_sequence=DASHBOARD_COLORS)
         fig.update_traces(marker_line_color="white", marker_line_width=1.5, textfont_color="#0f172a")
-        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
+        fig.update_layout(margin=dict(l=118, r=18, t=8, b=30), height=340, paper_bgcolor="white", plot_bgcolor="white", showlegend=False, font=dict(color="#334155", size=11))
+        fig.update_xaxes(title=None, automargin=True, gridcolor="#e5edf7", tickfont=dict(size=10))
+        fig.update_yaxes(title=None, automargin=True, tickfont=dict(size=9))
         figures.append(("Tipos de incidencia mas comunes", fig))
 
     if not dff_sla.empty:
         sla_chart = sla_dashboard_chart_data(dff_sla)
         fig = px.pie(sla_chart, names="SLA Dashboard", values="Cantidad", hole=.45, color_discrete_sequence=DASHBOARD_COLORS)
         fig.update_traces(textinfo="percent", textfont_size=14)
-        fig.update_layout(legend_title_text="Categoria SLA", margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white")
+        fig.update_layout(legend_title_text="Categoria SLA", margin=dict(l=8, r=8, t=8, b=8), height=340, paper_bgcolor="white", font=dict(color="#334155", size=11), legend=dict(font=dict(size=9)))
         figures.append(("SLA por estado", fig))
 
     if not dff.empty:
@@ -998,8 +1002,9 @@ def dashboard_pdf_bytes(dff, dff_sla, report_filters):
     ]))
     story.extend([filter_table, Spacer(1, 10)])
 
-    kpi_data = [[Paragraph(f"<b>{label}</b><br/><font color='#0f172a' size='18'><b>{value}</b></font><br/><font color='#64748b'>{sub}</font>", small_style) for label, value, sub in dashboard_kpi_values(dff)]]
-    kpi_table = Table(kpi_data, colWidths=[2.0 * inch] * 5)
+    kpi_style = ParagraphStyle("KpiText", parent=small_style, fontSize=7.2, leading=9, textColor=colors.HexColor("#334155"))
+    kpi_data = [[Paragraph(f"<b>{label}</b><br/><font color='#0f172a' size='14'><b>{value}</b></font><br/><font color='#64748b'>{sub}</font>", kpi_style) for label, value, sub in dashboard_kpi_values(dff)]]
+    kpi_table = Table(kpi_data, colWidths=[2.0 * inch] * 5, rowHeights=[0.58 * inch])
     kpi_table.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), .7, colors.HexColor("#dbe7f5")),
         ("INNERGRID", (0, 0), (-1, -1), .45, colors.HexColor("#e5edf7")),
@@ -1012,8 +1017,9 @@ def dashboard_pdf_bytes(dff, dff_sla, report_filters):
     ]))
     story.extend([Paragraph("Indicadores principales", section_style), kpi_table, Spacer(1, 8)])
 
-    exec_data = [[Paragraph(f"<b>{label}</b><br/><font color='#0f172a' size='11'><b>{escape(str(value))}</b></font><br/><font color='#64748b'>{sub}</font>", small_style) for label, value, sub in dashboard_executive_values(dff)]]
-    exec_table = Table(exec_data, colWidths=[2.5 * inch] * 4)
+    exec_style = ParagraphStyle("ExecText", parent=small_style, fontSize=7.2, leading=9.2, textColor=colors.HexColor("#334155"))
+    exec_data = [[Paragraph(f"<b>{label}</b><br/><font color='#0f172a' size='11'><b>{escape(str(value))}</b></font><br/><font color='#64748b'>{sub}</font>", exec_style) for label, value, sub in dashboard_executive_values(dff)]]
+    exec_table = Table(exec_data, colWidths=[2.5 * inch] * 4, rowHeights=[0.54 * inch])
     exec_table.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), .7, colors.HexColor("#dbe7f5")),
         ("INNERGRID", (0, 0), (-1, -1), .45, colors.HexColor("#e5edf7")),
@@ -1032,8 +1038,8 @@ def dashboard_pdf_bytes(dff, dff_sla, report_filters):
         chart_cells = []
         for title, fig in figures:
             try:
-                png = pio.to_image(fig, format="png", width=780, height=360, scale=2)
-                chart_body = Image(BytesIO(png), width=4.85 * inch, height=2.24 * inch)
+                png = pio.to_image(fig, format="png", width=900, height=440, scale=2)
+                chart_body = Image(BytesIO(png), width=4.9 * inch, height=2.38 * inch)
             except Exception as exc:
                 chart_body = Paragraph("Grafico no disponible como imagen. Revisa que kaleido este instalado para verlo igual que en la web.", small_style)
             chart_cells.append([
@@ -1043,7 +1049,7 @@ def dashboard_pdf_bytes(dff, dff_sla, report_filters):
         for idx in range(0, len(chart_cells), 2):
             row = []
             for cell in chart_cells[idx:idx + 2]:
-                row.append(Table([[cell[0]], [cell[1]]], colWidths=[5.05 * inch]))
+                row.append(Table([[cell[0]], [cell[1]]], colWidths=[5.05 * inch], rowHeights=[0.22 * inch, 2.45 * inch]))
             if len(row) == 1:
                 row.append("")
             chart_table = Table([row], colWidths=[5.15 * inch, 5.15 * inch])
@@ -2039,8 +2045,11 @@ def dashboard_page(data):
         st.markdown('<div class="detail-card"><div class="detail-title">Incidencias por departamento</div>', unsafe_allow_html=True)
         if not dff.empty:
             chart_df = dff.groupby("Departamento").size().reset_index(name="Cantidad")
-            fig = px.bar(chart_df, x="Departamento", y="Cantidad", text="Cantidad")
-            fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
+            fig = px.bar(chart_df, x="Departamento", y="Cantidad", text="Cantidad", color="Departamento", color_discrete_sequence=DASHBOARD_COLORS)
+            fig.update_traces(marker_line_color="white", marker_line_width=1.5, textfont_color="#0f172a")
+            fig.update_layout(margin=dict(l=20, r=10, t=10, b=20), height=310, paper_bgcolor="white", plot_bgcolor="white", showlegend=False)
+            fig.update_xaxes(title=None, automargin=True)
+            fig.update_yaxes(title=None, automargin=True, gridcolor="#e5edf7")
             st.plotly_chart(fig, use_container_width=True)
         else: st.caption("Sin datos para graficar.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -2048,8 +2057,11 @@ def dashboard_page(data):
         st.markdown('<div class="detail-card"><div class="detail-title">Tipos de incidencia más comunes</div>', unsafe_allow_html=True)
         if not dff.empty:
             top = dff.groupby("Tipo de Incidencia").size().reset_index(name="Cantidad").sort_values("Cantidad", ascending=False).head(8)
-            fig = px.bar(top, x="Cantidad", y="Tipo de Incidencia", orientation="h", text="Cantidad")
-            fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
+            fig = px.bar(top, x="Cantidad", y="Tipo de Incidencia", orientation="h", text="Cantidad", color="Tipo de Incidencia", color_discrete_sequence=DASHBOARD_COLORS)
+            fig.update_traces(marker_line_color="white", marker_line_width=1.5, textfont_color="#0f172a")
+            fig.update_layout(margin=dict(l=110, r=10, t=10, b=20), height=310, paper_bgcolor="white", plot_bgcolor="white", showlegend=False)
+            fig.update_xaxes(title=None, automargin=True, gridcolor="#e5edf7")
+            fig.update_yaxes(title=None, automargin=True)
             st.plotly_chart(fig, use_container_width=True)
         else: st.caption("Sin datos para graficar.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -2058,7 +2070,7 @@ def dashboard_page(data):
         st.markdown('<div class="detail-card"><div class="detail-title">SLA por estado</div>', unsafe_allow_html=True)
         if not dff_sla.empty:
             sla_chart = sla_dashboard_chart_data(dff_sla)
-            fig = px.pie(sla_chart, names="SLA Dashboard", values="Cantidad", hole=.45)
+            fig = px.pie(sla_chart, names="SLA Dashboard", values="Cantidad", hole=.45, color_discrete_sequence=DASHBOARD_COLORS)
             fig.update_traces(textinfo="percent", textfont_size=14)
             fig.update_layout(
                 legend_title_text="Categoría SLA",
@@ -2078,7 +2090,8 @@ def dashboard_page(data):
                 status_df,
                 names="Estatus",
                 values="Cantidad",
-                hole=.55
+                hole=.55,
+                color_discrete_sequence=DASHBOARD_COLORS
             )
 
             fig.update_traces(
@@ -2091,12 +2104,14 @@ def dashboard_page(data):
             )
 
             fig.update_layout(
-                height=310,
+                height=340,
                 paper_bgcolor="white",
                 plot_bgcolor="white",
-                margin=dict(l=10, r=10, t=10, b=10),
+                margin=dict(l=8, r=8, t=8, b=8),
                 legend_title_text="Estatus",
-                showlegend=True
+                showlegend=True,
+                font=dict(color="#334155", size=11),
+                legend=dict(font=dict(size=9))
             )
 
             st.plotly_chart(fig, use_container_width=True)
