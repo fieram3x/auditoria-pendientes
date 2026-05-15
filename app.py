@@ -823,11 +823,7 @@ def sla_info(row):
 
 
 def priority_dot(priority):
-    cls = slug(priority)
-    if cls in ["critica", "crítica"]:
-        cls = "critica"
-    return f'<span class="priority-dot {cls}"></span>'
-
+    return ""
 
 def sla_dashboard_category(row):
     """Categoriza el SLA para el dashboard.
