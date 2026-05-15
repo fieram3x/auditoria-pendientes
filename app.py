@@ -30,6 +30,10 @@ BITACORA_COLUMNS = [
 
 USUARIOS_COLUMNS = ["Usuario", "Password", "Nombre", "Rol", "Estado"]
 CATALOGOS_COLUMNS = ["Categoria", "Valor"]
+DASHBOARD_COLORS = [
+    "#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed",
+    "#0891b2", "#f97316", "#65a30d", "#be123c", "#4f46e5"
+]
 
 CLOSED_STATUS = ["Resuelto", "Cerrado"]
 SLA_DAYS_BY_PRIORITY = {"Crítica": 1, "Critica": 1, "Alta": 2, "Media": 3, "Baja": 5}
@@ -911,25 +915,27 @@ def dashboard_chart_figures(dff, dff_sla):
     figures = []
     if not dff.empty:
         chart_df = dff.groupby("Departamento").size().reset_index(name="Cantidad")
-        fig = px.bar(chart_df, x="Departamento", y="Cantidad", text="Cantidad")
+        fig = px.bar(chart_df, x="Departamento", y="Cantidad", text="Cantidad", color="Departamento", color_discrete_sequence=DASHBOARD_COLORS)
+        fig.update_traces(marker_line_color="white", marker_line_width=1.5, textfont_color="#0f172a")
         fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
         figures.append(("Incidencias por departamento", fig))
 
         top = dff.groupby("Tipo de Incidencia").size().reset_index(name="Cantidad").sort_values("Cantidad", ascending=False).head(8)
-        fig = px.bar(top, x="Cantidad", y="Tipo de Incidencia", orientation="h", text="Cantidad")
+        fig = px.bar(top, x="Cantidad", y="Tipo de Incidencia", orientation="h", text="Cantidad", color="Tipo de Incidencia", color_discrete_sequence=DASHBOARD_COLORS)
+        fig.update_traces(marker_line_color="white", marker_line_width=1.5, textfont_color="#0f172a")
         fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
         figures.append(("Tipos de incidencia mas comunes", fig))
 
     if not dff_sla.empty:
         sla_chart = sla_dashboard_chart_data(dff_sla)
-        fig = px.pie(sla_chart, names="SLA Dashboard", values="Cantidad", hole=.45)
+        fig = px.pie(sla_chart, names="SLA Dashboard", values="Cantidad", hole=.45, color_discrete_sequence=DASHBOARD_COLORS)
         fig.update_traces(textinfo="percent", textfont_size=14)
         fig.update_layout(legend_title_text="Categoria SLA", margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white")
         figures.append(("SLA por estado", fig))
 
     if not dff.empty:
         status_df = dff.groupby("Estatus").size().reset_index(name="Cantidad")
-        fig = px.pie(status_df, names="Estatus", values="Cantidad", hole=.55)
+        fig = px.pie(status_df, names="Estatus", values="Cantidad", hole=.55, color_discrete_sequence=DASHBOARD_COLORS)
         fig.update_traces(textinfo="percent", textposition="inside", textfont_size=16, marker=dict(line=dict(color="white", width=5)))
         fig.update_layout(height=310, paper_bgcolor="white", plot_bgcolor="white", margin=dict(l=10, r=10, t=10, b=10), legend_title_text="Estatus", showlegend=True)
         figures.append(("Incidencias por estatus", fig))
