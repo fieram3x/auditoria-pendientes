@@ -12,7 +12,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 
-APP_TITLE = "Auditoría Pendientes"
+APP_TITLE = "Auditori"
 SPREADSHEET_NAME = "auditoria_pendientes"
 
 SHEETS = ["Pendientes", "Bitacora", "Usuarios", "Catalogos"]
@@ -31,12 +31,18 @@ BITACORA_COLUMNS = [
 USUARIOS_COLUMNS = ["Usuario", "Password", "Nombre", "Rol", "Estado"]
 CATALOGOS_COLUMNS = ["Categoria", "Valor"]
 DASHBOARD_COLORS = [
-    "#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed",
-    "#0891b2", "#f97316", "#65a30d", "#be123c", "#4f46e5"
+    "#1f4fd8", "#15803d", "#c47a0a", "#c2410c", "#7c3aed",
+    "#0f766e", "#db2777", "#475569", "#be123c", "#0891b2"
 ]
 
 CLOSED_STATUS = ["Resuelto", "Cerrado"]
 SLA_DAYS_BY_PRIORITY = {"Crítica": 1, "Critica": 1, "Alta": 2, "Media": 3, "Baja": 5}
+DEPARTMENT_RENAMES = {
+    "Auditoría Nocturna": "Auditoría",
+    "Auditoria Nocturna": "Auditoría",
+    "Auditoría Diurna": "Auditoría",
+    "Auditoria Diurna": "Auditoría",
+}
 
 
 st.set_page_config(
@@ -54,14 +60,14 @@ st.markdown(
     """
 <style>
 :root{
-    --primary:#2563eb;
-    --primary-2:#1d4ed8;
-    --primary-soft:#eff6ff;
-    --bg:#f5f8fc;
+    --primary:#1f4fd8;
+    --primary-2:#173ea9;
+    --primary-soft:#eef4ff;
+    --bg:#f3f6fb;
     --surface:#ffffff;
     --surface-2:#f8fbff;
-    --border:#e5edf7;
-    --border-2:#d7e2f0;
+    --border:#dfe7f2;
+    --border-2:#cbd7e6;
     --text:#0f172a;
     --muted:#64748b;
     --muted-2:#94a3b8;
@@ -69,13 +75,11 @@ st.markdown(
     --orange:#d97706;
     --red:#dc2626;
     --purple:#7c3aed;
-    --shadow:0 8px 24px rgba(15,23,42,.06);
+    --shadow:0 14px 34px rgba(15,23,42,.08);
 }
 
 .stApp {
-    background:
-        radial-gradient(circle at top left, rgba(37,99,235,.08), transparent 30%),
-        var(--bg);
+    background:var(--bg);
     color: var(--text);
 }
 
@@ -88,7 +92,7 @@ st.markdown(
 [data-testid="stSidebar"] {
     background:#ffffff;
     border-right:1px solid var(--border);
-    box-shadow: 6px 0 20px rgba(15,23,42,.025);
+    box-shadow: 8px 0 24px rgba(15,23,42,.035);
 }
 
 [data-testid="stSidebar"] * {
@@ -100,10 +104,10 @@ st.markdown(
 [data-testid="stDecoration"],
 
 .app-shell {
-    background:rgba(255,255,255,.72);
-    border:1px solid rgba(229,237,247,.9);
-    border-radius:22px;
-    padding:18px 20px;
+    background:rgba(255,255,255,.94);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:16px 18px;
     box-shadow:var(--shadow);
     margin-bottom:16px;
 }
@@ -122,25 +126,25 @@ st.markdown(
 }
 
 .logo {
-    width:46px;
-    height:46px;
-    border-radius:15px;
-    background:linear-gradient(135deg,#2563eb,#60a5fa);
+    width:44px;
+    height:44px;
+    border-radius:12px;
+    background:linear-gradient(135deg,#1f4fd8,#3b82f6);
     display:flex;
     align-items:center;
     justify-content:center;
     color:white;
     font-size:24px;
-    box-shadow:0 10px 22px rgba(37,99,235,.24);
+    box-shadow:0 12px 24px rgba(31,79,216,.22);
 }
 
 .title h1 {
-    font-size:26px;
+    font-size:25px;
     margin:0;
     line-height:1.05;
     color:#0f172a;
     font-weight:900;
-    letter-spacing:-.3px;
+    letter-spacing:0;
 }
 
 .title p {
@@ -150,24 +154,24 @@ st.markdown(
 }
 
 .user-pill {
-    background:#fff;
+    background:#f8fbff;
     border:1px solid var(--border);
     border-radius:999px;
     padding:8px 14px;
     color:#334155;
-    box-shadow:0 1px 5px rgba(15,23,42,.04);
+    box-shadow:0 1px 4px rgba(15,23,42,.04);
     font-size:13px;
     white-space:nowrap;
 }
 
 .login-card {
     max-width:500px;
-    margin:6vh auto 0;
+    margin:5vh auto 0;
     background:#fff;
     border:1px solid var(--border);
-    border-radius:24px;
-    padding:30px;
-    box-shadow:0 18px 45px rgba(15,23,42,.09);
+    border-radius:18px;
+    padding:28px 30px;
+    box-shadow:0 22px 48px rgba(15,23,42,.10);
 }
 
 .section-title {
@@ -183,7 +187,7 @@ st.markdown(
     font-size:22px;
     font-weight:900;
     color:#0f172a;
-    letter-spacing:-.2px;
+    letter-spacing:0;
 }
 
 .section-title p {
@@ -195,7 +199,7 @@ st.markdown(
 .kpi-card {
     background:#fff;
     border:1px solid var(--border);
-    border-radius:18px;
+    border-radius:14px;
     padding:16px 18px;
     box-shadow:0 3px 12px rgba(15,23,42,.045);
     min-height:104px;
@@ -236,7 +240,7 @@ st.markdown(
 .filter-box {
     background:#fff;
     border:1px solid var(--border);
-    border-radius:18px;
+    border-radius:14px;
     padding:16px 16px 12px;
     margin:.2rem 0 .8rem;
     box-shadow:0 3px 14px rgba(15,23,42,.04);
@@ -245,7 +249,7 @@ st.markdown(
 .report-card {
     background:#fff;
     border:1px solid var(--border);
-    border-radius:18px;
+    border-radius:14px;
     box-shadow:0 3px 14px rgba(15,23,42,.045);
     overflow:hidden;
     margin-top:.75rem;
@@ -414,7 +418,7 @@ div[data-testid="stPopover"] button {
 .user-panel {
     background:#fff;
     border:1px solid var(--border);
-    border-radius:18px;
+    border-radius:14px;
     padding:16px;
     box-shadow:0 3px 14px rgba(15,23,42,.045);
 }
@@ -443,7 +447,7 @@ div[data-testid="stPopover"] button {
 }
 
 .stButton>button {
-    border-radius:10px;
+    border-radius:9px;
     border:1px solid var(--border-2);
     background:#ffffff;
     color:#0f172a;
@@ -458,9 +462,25 @@ div[data-testid="stPopover"] button {
 }
 
 .stButton>button[kind="primary"] {
-    border-color:#2563eb !important;
-    background:#2563eb !important;
+    border-color:var(--primary) !important;
+    background:var(--primary) !important;
     color:white !important;
+}
+
+.stTextInput input,
+.stTextArea textarea,
+.stSelectbox div[data-baseweb="select"] > div,
+.stDateInput input {
+    border-radius:10px !important;
+    border-color:#d9e3ef !important;
+    background:#f8fafc !important;
+}
+
+.stTextInput input:focus,
+.stTextArea textarea:focus,
+.stDateInput input:focus {
+    border-color:var(--primary) !important;
+    box-shadow:0 0 0 3px rgba(31,79,216,.12) !important;
 }
 
 div[data-testid="stPopover"] button {
@@ -619,6 +639,11 @@ def normalize_text(value):
     return str(value).strip()
 
 
+def normalize_department(value):
+    text = normalize_text(value)
+    return DEPARTMENT_RENAMES.get(text, text)
+
+
 def safe_date(value, with_time=False):
     if pd.isna(value) or value in [None, ""]:
         return ""
@@ -661,7 +686,7 @@ def seed_data():
     catalogos_rows = []
     for v in ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"]:
         catalogos_rows.append(["Hotel", v])
-    for v in ["Recepción", "Reservas", "A&B", "Spa", "Contabilidad", "IT", "Club Meliá", "Auditoría Nocturna", "Auditoría Diurna"]:
+    for v in ["Recepción", "Reservas", "A&B", "Spa", "Contabilidad", "IT", "Club Meliá", "Auditoría"]:
         catalogos_rows.append(["Departamento", v])
     for v in ["Cobro no realizado", "Routing incorrecto", "Check-in mal procesado", "Rate Code incorrecto", "Factura no volcada a SAP", "Diferencia POS vs PMS", "Resort Credit incorrecto", "HTC incorrecto", "Falta de soporte", "Incidencia IT"]:
         catalogos_rows.append(["Tipo de Incidencia", v])
@@ -714,6 +739,14 @@ def migrate_columns(df, sheet_name):
             df[col] = ""
 
     df = df[list(target.columns)].fillna("")
+
+    if sheet_name == "Pendientes" and "Departamento" in df.columns:
+        df["Departamento"] = df["Departamento"].apply(normalize_department)
+
+    if sheet_name == "Catalogos" and {"Categoria", "Valor"}.issubset(df.columns):
+        dept_mask = df["Categoria"].astype(str).str.strip().eq("Departamento")
+        df.loc[dept_mask, "Valor"] = df.loc[dept_mask, "Valor"].apply(normalize_department)
+        df = df.drop_duplicates(subset=["Categoria", "Valor"], keep="first").reset_index(drop=True)
 
     if sheet_name == "Usuarios":
         df["Estado"] = df["Estado"].replace({
@@ -965,7 +998,7 @@ def dashboard_pdf_bytes(dff, dff_sla, report_filters):
         leftMargin=26,
         topMargin=24,
         bottomMargin=24,
-        title="Dashboard Auditoria Pendientes",
+        title="Dashboard Auditori",
     )
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("DashboardTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=20, leading=24, textColor=colors.HexColor("#0f172a"), spaceAfter=4)
@@ -974,7 +1007,7 @@ def dashboard_pdf_bytes(dff, dff_sla, report_filters):
     small_style = ParagraphStyle("Small", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.HexColor("#334155"))
 
     story = [
-        Paragraph("Dashboard - Auditoria Pendientes", title_style),
+        Paragraph("Dashboard - Auditori", title_style),
         Paragraph(f"Resumen ejecutivo generado el {datetime.now().strftime('%d/%m/%Y %I:%M %p')}", subtitle_style),
     ]
 
@@ -1304,7 +1337,7 @@ def header():
                     <div class="logo">🛡️</div>
                     <div class="title">
                         <h1>{APP_TITLE}</h1>
-                        <p>Monitor operativo de incidencias y pendientes de auditoría</p>
+                        <p>Monitor operativo de incidencias</p>
                     </div>
                 </div>
                 <div class="user-pill">👤 {st.session_state.get("name", "Usuario")} · {st.session_state.get("role", "")}</div>
@@ -1316,7 +1349,7 @@ def header():
 
 
 def sidebar_nav():
-    st.sidebar.markdown("### 🛡️ Auditoría")
+    st.sidebar.markdown("### 🛡️ Auditori")
     st.sidebar.caption("Panel de control")
 
     if "page" not in st.session_state:
