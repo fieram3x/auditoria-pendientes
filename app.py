@@ -252,22 +252,21 @@ st.markdown(
 }
 
 .table-row-wrap {
-    border: 0 !important;
-    border-top: 1px solid #e8eef7 !important;
-    border-radius: 0 !important;
-    margin: 4px 8px 2px !important;
+    border: 1px solid #e8eef7 !important;
+    border-radius: 14px !important;
+    margin: 8px 2px 0 !important;
     padding: 0 !important;
     min-height: 0 !important;
-    height: 1px !important;
-    background: transparent !important;
+    height: auto !important;
+    background: #ffffff !important;
     box-shadow: none !important;
     transition: all .15s ease-in-out !important;
 }
 
 .table-row-wrap:hover {
     transform: none;
-    box-shadow: none !important;
-    background: transparent !important;
+    box-shadow: 0 8px 18px rgba(15,23,42,.055) !important;
+    background: #f8fbff !important;
 }
 
 .cell-text {
@@ -603,8 +602,7 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
     box-shadow: 0 10px 18px rgba(15,23,42,.045);
 }
 
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel),
-div[data-testid="stVerticalBlock"]:has(> div .incidents-scroll-panel) {
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel) {
     background: rgba(255,255,255,.82);
     border: 1px solid #dbe7f5;
     border-top: 0;
@@ -615,13 +613,11 @@ div[data-testid="stVerticalBlock"]:has(> div .incidents-scroll-panel) {
     scrollbar-color: #b7c8df transparent;
 }
 
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel)::-webkit-scrollbar,
-div[data-testid="stVerticalBlock"]:has(> div .incidents-scroll-panel)::-webkit-scrollbar {
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel)::-webkit-scrollbar {
     width: 9px;
 }
 
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel)::-webkit-scrollbar-thumb,
-div[data-testid="stVerticalBlock"]:has(> div .incidents-scroll-panel)::-webkit-scrollbar-thumb {
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel)::-webkit-scrollbar-thumb {
     background: #b7c8df;
     border-radius: 999px;
 }
@@ -650,17 +646,17 @@ div[data-testid="stVerticalBlock"]:has(> div .incidents-scroll-panel)::-webkit-s
 /* Oculta el marcador vacío que antes parecía una fila */
 div[data-testid="stVerticalBlock"] > div:has(.filter-box),
 div[data-testid="stVerticalBlock"] > div:has(.report-card),
-div[data-testid="stVerticalBlock"] > div:has(.table-header),
-div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) {
+div[data-testid="stVerticalBlock"] > div:has(.table-header) {
     display: none !important;
 }
 
 /* Estilo real para las filas de datos */
 div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) + div[data-testid="stHorizontalBlock"] {
     background: #ffffff !important;
-    border-bottom: 1px solid #e6edf7 !important;
-    padding: 13px 8px !important;
-    margin: 0 !important;
+    border: 1px solid #e6edf7 !important;
+    border-radius: 14px !important;
+    padding: 13px 10px !important;
+    margin: 8px 2px 0 !important;
 }
 
 /* Primera fila debajo del encabezado */
