@@ -880,6 +880,199 @@ div[data-testid="stPopover"] button {
     box-shadow: 0 8px 16px rgba(15,23,42,.055);
 }
 
+/* Apariencia tipo panel operativo limpio, estilo referencia */
+.stApp {
+    background: #f4f8fc !important;
+}
+
+.block-container {
+    padding-top: .55rem;
+}
+
+.app-shell.sticky-head {
+    background: #eef7ff !important;
+    border: 1px solid #cfe4fb !important;
+    border-radius: 0 0 18px 18px !important;
+    box-shadow: 0 14px 30px rgba(15,23,42,.06) !important;
+    padding: 26px 28px !important;
+}
+
+.app-header {
+    align-items: center;
+}
+
+.logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+}
+
+.title h1 {
+    font-size: 28px;
+    font-weight: 900;
+    color: #071528;
+}
+
+.user-pill {
+    background: #ffffff !important;
+    border: 1px solid #d7e3f1 !important;
+    box-shadow: 0 4px 12px rgba(15,23,42,.045) !important;
+}
+
+div[data-testid="stHorizontalBlock"]:has(.section-title) {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 22px 0 14px !important;
+}
+
+div[data-testid="stHorizontalBlock"]:has(.section-title) .section-title h2 {
+    font-size: 26px !important;
+    font-weight: 900 !important;
+    color: #132033 !important;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] {
+    background: #ffffff !important;
+    border: 1px solid #cfd8e3 !important;
+    border-radius: 7px 7px 0 0 !important;
+    border-bottom: 0 !important;
+    box-shadow: none !important;
+    padding: 54px 14px 12px !important;
+    position: sticky;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"]::before {
+    content: "Filtros";
+    position: absolute;
+    left: 14px;
+    top: 18px;
+    color: #1f2937;
+    font-size: 20px;
+    font-weight: 850;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
+    background: #ffffff !important;
+    border: 1px solid #cfd8e3 !important;
+    border-top: 0 !important;
+    border-radius: 0 0 7px 7px !important;
+    box-shadow: none !important;
+    padding: 4px 14px 14px !important;
+}
+
+div[data-testid="stSelectbox"] label,
+div[data-testid="stTextInput"] label {
+    color: #0f172a !important;
+    font-size: 11.5px !important;
+    font-weight: 650 !important;
+}
+
+div[data-baseweb="select"] > div,
+div[data-testid="stTextInput"] input {
+    background: #f0f3f7 !important;
+    border: 1px solid #edf1f6 !important;
+    border-radius: 7px !important;
+    min-height: 38px !important;
+    box-shadow: none !important;
+}
+
+div[data-baseweb="select"] > div:hover,
+div[data-testid="stTextInput"] input:hover,
+div[data-baseweb="select"] > div:focus-within,
+div[data-testid="stTextInput"] input:focus {
+    background: #ffffff !important;
+    border-color: #c9d5e4 !important;
+    box-shadow: none !important;
+}
+
+.stButton>button,
+div[data-testid="stDownloadButton"] button {
+    background: #ffffff !important;
+    border: 1px solid #cfd8e3 !important;
+    border-radius: 7px !important;
+    box-shadow: none !important;
+    color: #0f172a !important;
+    min-height: 40px;
+}
+
+.stButton>button[kind="primary"] {
+    background: #2563eb !important;
+    border-color: #2563eb !important;
+    border-radius: 7px !important;
+    box-shadow: none !important;
+    color: #ffffff !important;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] {
+    background: #ffffff !important;
+    border: 1px solid #cfd8e3 !important;
+    border-radius: 7px !important;
+    box-shadow: none !important;
+    padding: 10px 14px !important;
+    margin-top: 28px !important;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] p {
+    color: #526173 !important;
+    font-size: 12px !important;
+    font-weight: 850 !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel) {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 6px 0 0 !important;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) + div[data-testid="stHorizontalBlock"] {
+    background: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 7px !important;
+    box-shadow: none !important;
+    padding: 15px 14px !important;
+    margin: 10px 0 0 !important;
+    min-height: 64px;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) + div[data-testid="stHorizontalBlock"]:hover {
+    transform: none !important;
+    border-color: #b9c6d6 !important;
+    background: #fbfdff !important;
+    box-shadow: 0 4px 12px rgba(15,23,42,.035) !important;
+}
+
+.cell-text {
+    color: #061225 !important;
+    font-size: 12.8px !important;
+    font-weight: 760 !important;
+}
+
+.cell-muted {
+    color: #526173 !important;
+    font-size: 12px !important;
+    font-weight: 620 !important;
+}
+
+.badge {
+    border: 0 !important;
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+    font-weight: 850 !important;
+    box-shadow: none !important;
+}
+
+div[data-testid="stPopover"] button {
+    border: 1px solid #d1d5db !important;
+    border-radius: 7px !important;
+    box-shadow: none !important;
+}
+
 </style>
 
 """,
