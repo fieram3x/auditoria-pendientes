@@ -1662,7 +1662,8 @@ def apply_dashboard_multifilters(df):
     return dff
 
 def apply_filters(df, key_prefix="f"):
-    st.markdown('<div class="filter-box">', unsafe_allow_html=True)
+    filter_class = "filter-box filter-box-pend" if key_prefix == "pend" else "filter-box"
+    st.markdown(f'<div class="{filter_class}">', unsafe_allow_html=True)
 
     cols_filter = {
         "Hotel": f"{key_prefix}_hotel",
@@ -1784,6 +1785,7 @@ def render_report_table(data, dff):
     )
 
     st.markdown('<div class="report-card">', unsafe_allow_html=True)
+    st.markdown('<div class="pendientes-table-anchor"></div>', unsafe_allow_html=True)
     st.markdown('<div class="table-header">', unsafe_allow_html=True)
 
     h = st.columns([1.05, .85, .72, 1.05, 1.25, .9, 1.05, .95, 1.95, .52])
@@ -2376,6 +2378,7 @@ def render_create_incidence_dialog(data):
         st.rerun()
 
 def pendientes_page(data):
+    st.markdown('<div class="pendientes-sticky-anchor"></div>', unsafe_allow_html=True)
     create_clicked = page_title(
         "Pendientes / Incidencias",
         "Reporte operativo con filtros dinámicos, menú de acciones y bitácora por incidencia.",
