@@ -1742,16 +1742,38 @@ def dashboard_page(data):
         else: st.caption("Sin datos para graficar.")
         st.markdown('</div>', unsafe_allow_html=True)
     with g4:
-        st.markdown('<div class="detail-card"><div class="detail-title">Tendencia mensual</div>', unsafe_allow_html=True)
-        if not dff.empty:
-            temp = dff.copy(); temp["Mes"] = pd.to_datetime(temp["Fecha Creación"], errors="coerce").dt.to_period("M").astype(str); temp = temp[temp["Mes"] != "NaT"]
-            if not temp.empty:
-                month_df = temp.groupby("Mes").size().reset_index(name="Cantidad")
-                fig = px.line(month_df, x="Mes", y="Cantidad", markers=True)
-                fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
-                st.plotly_chart(fig, use_container_width=True)
-            else: st.caption("Sin fechas válidas para graficar.")
-        else: st.caption("Sin datos para graficar.")
+        st.markdown('<div class="detail-card"><div class="detail-title">Incidencias por estatus</div>', unsafe_allow_html=True)
+        if not dff.empty and "Estatus" in dff.columns:
+            status_order = get_catalog(data, "Estatus", ["Pendiente", "En proceso", "En espera de respuesta", "Escalado", "Resuelto", "Cerrado"])
+            status_chart = (
+                dff.groupby("Estatus")
+                .size()
+                .reset_index(name="Cantidad")
+            )
+            status_chart["Orden"] = status_chart["Estatus"].apply(lambda x: status_order.index(x) if x in status_order else len(status_order))
+            status_chart = status_chart.sort_values("Orden").drop(columns=["Orden"])
+
+            fig = px.pie(
+                status_chart,
+                names="Estatus",
+                values="Cantidad",
+                hole=.28
+            )
+            fig.update_traces(
+                textinfo="percent+label",
+                textposition="inside",
+                textfont_size=13,
+                hovertemplate="<b>%{label}</b><br>Cantidad: %{value}<br>Porcentaje: %{percent}<extra></extra>"
+            )
+            fig.update_layout(
+                legend_title_text="Estatus",
+                margin=dict(l=10, r=10, t=10, b=10),
+                height=310,
+                paper_bgcolor="white"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.caption("Sin datos para graficar.")
         st.markdown('</div>', unsafe_allow_html=True)
 
 
