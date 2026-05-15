@@ -1754,7 +1754,9 @@ def dashboard_page(data):
             )
 
             fig.update_traces(
-                textinfo="none",
+                textinfo="percent",
+                textposition="inside",
+                textfont_size=16,
                 marker=dict(
                     line=dict(color="white", width=5)
                 )
