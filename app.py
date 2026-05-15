@@ -597,6 +597,44 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
     margin: 0 !important;
 }
 
+div[data-testid="stVerticalBlock"] > div:has(.pendientes-sticky-anchor) ~ div[data-testid="stHorizontalBlock"]:has(.section-title) {
+    position: sticky !important;
+    top: 88px;
+    z-index: 990;
+    background: rgba(245,248,252,.97) !important;
+    backdrop-filter: blur(10px);
+    padding: 12px 0 8px !important;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.filter-box-pend) + div[data-testid="stHorizontalBlock"] {
+    position: sticky !important;
+    top: 166px;
+    z-index: 989;
+    background: rgba(245,248,252,.97) !important;
+    backdrop-filter: blur(10px);
+    padding: 10px 0 8px !important;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.filter-box-pend) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
+    position: sticky !important;
+    top: 254px;
+    z-index: 988;
+    background: rgba(245,248,252,.97) !important;
+    backdrop-filter: blur(10px);
+    padding: 8px 0 12px !important;
+    border-bottom: 1px solid #dbe7f5;
+    box-shadow: 0 10px 18px rgba(15,23,42,.045);
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.pendientes-table-anchor) + div:has(.table-header) {
+    position: sticky !important;
+    top: 326px;
+    z-index: 987;
+    background: rgba(245,248,252,.97) !important;
+    backdrop-filter: blur(10px);
+    padding-top: 8px !important;
+}
+
 /* Texto más alineado */
 .cell-text,
 .cell-muted {
