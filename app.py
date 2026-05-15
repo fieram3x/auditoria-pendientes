@@ -826,16 +826,68 @@ def priority_dot(priority):
     return f'<span class="priority-dot {cls}"></span>'
 
 
+def sla_dashboard_category(row):
+    """Categoriza el SLA para el dashboard.
+    Los vencidos se agrupan por rango de días para que el gráfico no se fragmente
+    con etiquetas como Vencido 15d, Vencido 17d, etc.
+    """
+    info = sla_info(row)
+    days = info.get("days")
+
+    if info.get("label") == "Cerrado":
+        return "Cerrado"
+
+    if days is None:
+        return "Sin fecha"
+
+    if days < 0:
+        overdue_days = abs(int(days))
+        if 1 <= overdue_days <= 5:
+            return "Vencido 1 a 5 días"
+        if 6 <= overdue_days <= 10:
+            return "Vencido 6 a 10 días"
+        if 11 <= overdue_days <= 20:
+            return "Vencido 11 a 20 días"
+        if 21 <= overdue_days <= 30:
+            return "Vencido 20 a 30 días"
+        return "Vencido más de 30 días"
+
+    if days == 0:
+        return "Vence hoy"
+
+    return "En tiempo"
+
+
 def add_sla_columns(df):
     dff = df.copy()
     if dff.empty:
         dff["SLA"] = []
         dff["Días SLA"] = []
+        dff["SLA Dashboard"] = []
         return dff
     info = dff.apply(sla_info, axis=1)
     dff["SLA"] = info.apply(lambda x: x["label"])
     dff["Días SLA"] = info.apply(lambda x: x["days"] if x["days"] is not None else "")
+    dff["SLA Dashboard"] = dff.apply(sla_dashboard_category, axis=1)
     return dff
+
+
+def sla_dashboard_chart_data(dff_sla):
+    order = [
+        "Vence hoy",
+        "En tiempo",
+        "Cerrado",
+        "Vencido 1 a 5 días",
+        "Vencido 6 a 10 días",
+        "Vencido 11 a 20 días",
+        "Vencido 20 a 30 días",
+        "Vencido más de 30 días",
+        "Sin fecha",
+    ]
+
+    chart = dff_sla.groupby("SLA Dashboard").size().reset_index(name="Cantidad")
+    chart["Orden"] = chart["SLA Dashboard"].apply(lambda x: order.index(x) if x in order else len(order))
+    return chart.sort_values("Orden").drop(columns=["Orden"])
 
 
 def notification_center(df, max_items=5):
@@ -1677,25 +1729,15 @@ def dashboard_page(data):
     with g3:
         st.markdown('<div class="detail-card"><div class="detail-title">SLA por estado</div>', unsafe_allow_html=True)
         if not dff_sla.empty:
-            sla_chart = dff_sla.groupby("SLA").size().reset_index(name="Cantidad")
-            fig = px.pie(
-                sla_chart,
-                names="SLA",
-                values="Cantidad",
-                hole=.45
-            )
-
-            fig.update_traces(
-                textinfo="percent",
-                textfont_size=14
-            )
-
+            sla_chart = sla_dashboard_chart_data(dff_sla)
+            fig = px.pie(sla_chart, names="SLA Dashboard", values="Cantidad", hole=.45)
+            fig.update_traces(textinfo="percent", textfont_size=14)
             fig.update_layout(
+                legend_title_text="Categoría SLA",
                 margin=dict(l=10, r=10, t=10, b=10),
                 height=310,
                 paper_bgcolor="white"
             )
-
             st.plotly_chart(fig, use_container_width=True)
         else: st.caption("Sin datos para graficar.")
         st.markdown('</div>', unsafe_allow_html=True)
