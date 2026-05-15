@@ -1,4 +1,4 @@
-import os
+﻿import os
 from io import BytesIO
 from datetime import datetime, date, timedelta
 
@@ -10,19 +10,19 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 
-APP_TITLE = "Auditoría Pendientes"
+APP_TITLE = "AuditorÃ­a Pendientes"
 SPREADSHEET_NAME = "auditoria_pendientes"
 
 SHEETS = ["Pendientes", "Bitacora", "Usuarios", "Catalogos"]
 
 PENDIENTES_COLUMNS = [
-    "ID", "Fecha Creación", "Hotel", "Departamento", "Tipo de Incidencia",
-    "Impacto", "Prioridad", "Estatus", "Fecha Compromiso", "Descripción",
-    "Fecha Cierre", "Última Actualización"
+    "ID", "Fecha CreaciÃ³n", "Hotel", "Departamento", "Tipo de Incidencia",
+    "Impacto", "Prioridad", "Estatus", "Fecha Compromiso", "DescripciÃ³n",
+    "Fecha Cierre", "Ãšltima ActualizaciÃ³n"
 ]
 
 BITACORA_COLUMNS = [
-    "ID Pendiente", "Fecha", "Usuario", "Acción", "Comentario",
+    "ID Pendiente", "Fecha", "Usuario", "AcciÃ³n", "Comentario",
     "Estado Anterior", "Estado Nuevo"
 ]
 
@@ -30,12 +30,12 @@ USUARIOS_COLUMNS = ["Usuario", "Password", "Nombre", "Rol", "Estado"]
 CATALOGOS_COLUMNS = ["Categoria", "Valor"]
 
 CLOSED_STATUS = ["Resuelto", "Cerrado"]
-SLA_DAYS_BY_PRIORITY = {"Crítica": 1, "Critica": 1, "Alta": 2, "Media": 3, "Baja": 5}
+SLA_DAYS_BY_PRIORITY = {"CrÃ­tica": 1, "Critica": 1, "Alta": 2, "Media": 3, "Baja": 5}
 
 
 st.set_page_config(
     page_title=APP_TITLE,
-    page_icon="🛡️",
+    page_icon="ðŸ›¡ï¸",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -345,7 +345,7 @@ div[data-testid="stPopover"] button {
     white-space:nowrap;
 }
 
-.badge-alta,.badge-critica,.badge-crítica {
+.badge-alta,.badge-critica,.badge-crÃ­tica {
     color:#dc2626;
     background:#fee2e2;
     border-color:#fecaca;
@@ -578,7 +578,7 @@ def safe_date(value, with_time=False):
 
 def slug(value):
     s = normalize_text(value).lower().replace(" ", "-").replace("/", "-")
-    replacements = {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u"}
+    replacements = {"Ã¡": "a", "Ã©": "e", "Ã­": "i", "Ã³": "o", "Ãº": "u"}
     for a, b in replacements.items():
         s = s.replace(a, b)
     return s
@@ -608,13 +608,13 @@ def seed_data():
     catalogos_rows = []
     for v in ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"]:
         catalogos_rows.append(["Hotel", v])
-    for v in ["Recepción", "Reservas", "A&B", "Spa", "Contabilidad", "IT", "Club Meliá", "Auditoría Nocturna", "Auditoría Diurna"]:
+    for v in ["RecepciÃ³n", "Reservas", "A&B", "Spa", "Contabilidad", "IT", "Club MeliÃ¡", "AuditorÃ­a Nocturna", "AuditorÃ­a Diurna"]:
         catalogos_rows.append(["Departamento", v])
     for v in ["Cobro no realizado", "Routing incorrecto", "Check-in mal procesado", "Rate Code incorrecto", "Factura no volcada a SAP", "Diferencia POS vs PMS", "Resort Credit incorrecto", "HTC incorrecto", "Falta de soporte", "Incidencia IT"]:
         catalogos_rows.append(["Tipo de Incidencia", v])
     for v in ["Operativo", "Financiero", "Contable", "Cliente", "Sistema"]:
         catalogos_rows.append(["Impacto", v])
-    for v in ["Baja", "Media", "Alta", "Crítica"]:
+    for v in ["Baja", "Media", "Alta", "CrÃ­tica"]:
         catalogos_rows.append(["Prioridad", v])
     for v in ["Pendiente", "En proceso", "En espera de respuesta", "Escalado", "Resuelto", "Cerrado"]:
         catalogos_rows.append(["Estatus", v])
@@ -649,8 +649,8 @@ def conectar_google_sheets():
 
 def migrate_columns(df, sheet_name):
     if sheet_name == "Usuarios":
-        if "Contraseña" in df.columns and "Password" not in df.columns:
-            df = df.rename(columns={"Contraseña": "Password"})
+        if "ContraseÃ±a" in df.columns and "Password" not in df.columns:
+            df = df.rename(columns={"ContraseÃ±a": "Password"})
         if "Activo" in df.columns and "Estado" not in df.columns:
             df = df.rename(columns={"Activo": "Estado"})
 
@@ -664,7 +664,7 @@ def migrate_columns(df, sheet_name):
 
     if sheet_name == "Usuarios":
         df["Estado"] = df["Estado"].replace({
-            "Sí": "Activo", "Si": "Activo", "No": "Inactivo",
+            "SÃ­": "Activo", "Si": "Activo", "No": "Inactivo",
             True: "Activo", False: "Inactivo"
         })
         df.loc[df["Estado"].astype(str).str.strip() == "", "Estado"] = "Activo"
@@ -805,7 +805,7 @@ def sla_info(row):
 
     due = parse_any_date(row.get("Fecha Compromiso", ""))
     if pd.isna(due):
-        due = pd.Timestamp(suggested_due_date(row.get("Prioridad", "Media"), row.get("Fecha Creación", "")))
+        due = pd.Timestamp(suggested_due_date(row.get("Prioridad", "Media"), row.get("Fecha CreaciÃ³n", "")))
 
     today = pd.Timestamp(date.today())
     days = int((due.normalize() - today).days)
@@ -821,7 +821,7 @@ def sla_info(row):
 
 def priority_dot(priority):
     cls = slug(priority)
-    if cls in ["critica", "crítica"]:
+    if cls in ["critica", "crÃ­tica"]:
         cls = "critica"
     return f'<span class="priority-dot {cls}"></span>'
 
@@ -830,11 +830,11 @@ def add_sla_columns(df):
     dff = df.copy()
     if dff.empty:
         dff["SLA"] = []
-        dff["Días SLA"] = []
+        dff["DÃ­as SLA"] = []
         return dff
     info = dff.apply(sla_info, axis=1)
     dff["SLA"] = info.apply(lambda x: x["label"])
-    dff["Días SLA"] = info.apply(lambda x: x["days"] if x["days"] is not None else "")
+    dff["DÃ­as SLA"] = info.apply(lambda x: x["days"] if x["days"] is not None else "")
     return dff
 
 
@@ -848,7 +848,7 @@ def notification_center(df, max_items=5):
     alerts = []
     for _, r in open_df.iterrows():
         info = sla_info(r)
-        is_critical = normalize_text(r.get("Prioridad", "")) in ["Crítica", "Critica"]
+        is_critical = normalize_text(r.get("Prioridad", "")) in ["CrÃ­tica", "Critica"]
         if info["class"] in ["overdue", "warning"] or is_critical:
             alerts.append((info["days"] if info["days"] is not None else 999, is_critical, r, info))
 
@@ -856,13 +856,13 @@ def notification_center(df, max_items=5):
     if not alerts:
         return
 
-    st.markdown('<div class="alert-card"><div class="detail-title">🔔 Alertas operativas</div>', unsafe_allow_html=True)
+    st.markdown('<div class="alert-card"><div class="detail-title">ðŸ”” Alertas operativas</div>', unsafe_allow_html=True)
     for _, is_critical, r, info in alerts:
         level = "alert-danger" if info["class"] == "overdue" or is_critical else "alert-warn"
         st.markdown(
             f'''<div class="alert-item {level}">
-                <b>{r.get("ID", "")}</b> · {r.get("Hotel", "")} · {badge(r.get("Prioridad", ""))} · <b>{info["label"]}</b><br>
-                <span style="color:#64748b;">{str(r.get("Descripción", ""))[:120]}</span>
+                <b>{r.get("ID", "")}</b> Â· {r.get("Hotel", "")} Â· {badge(r.get("Prioridad", ""))} Â· <b>{info["label"]}</b><br>
+                <span style="color:#64748b;">{str(r.get("DescripciÃ³n", ""))[:120]}</span>
             </div>''',
             unsafe_allow_html=True
         )
@@ -885,7 +885,7 @@ def login_view(data):
         f"""
         <div class="login-card">
             <div style="display:flex;align-items:center;gap:14px;">
-                <div class="logo">🛡️</div>
+                <div class="logo">ðŸ›¡ï¸</div>
                 <div class="title">
                     <h1>{APP_TITLE}</h1>
                     <p>Control y seguimiento de incidencias</p>
@@ -899,9 +899,9 @@ def login_view(data):
     c1, c2, c3 = st.columns([1.1, 1, 1.1])
 
     with c2:
-        st.markdown("### Inicio de sesión")
+        st.markdown("### Inicio de sesiÃ³n")
         usuario = st.text_input("Usuario", placeholder="Ingrese su usuario")
-        password = st.text_input("Contraseña", type="password", placeholder="Ingrese su contraseña")
+        password = st.text_input("ContraseÃ±a", type="password", placeholder="Ingrese su contraseÃ±a")
 
         if st.button("Entrar", type="primary", use_container_width=True):
             users = data["Usuarios"].copy()
@@ -912,7 +912,7 @@ def login_view(data):
             ]
 
             if hit.empty:
-                st.error("Usuario o contraseña incorrectos, o usuario inactivo.")
+                st.error("Usuario o contraseÃ±a incorrectos, o usuario inactivo.")
             else:
                 row = hit.iloc[0]
                 st.session_state["logged"] = True
@@ -923,7 +923,7 @@ def login_view(data):
 
 
 # ==========================================================
-# HEADER / NAVEGACIÓN
+# HEADER / NAVEGACIÃ“N
 # ==========================================================
 def header():
     st.markdown(
@@ -931,13 +931,13 @@ def header():
         <div class="app-shell sticky-head">
             <div class="app-header">
                 <div class="brand">
-                    <div class="logo">🛡️</div>
+                    <div class="logo">ðŸ›¡ï¸</div>
                     <div class="title">
                         <h1>{APP_TITLE}</h1>
-                        <p>Monitor operativo de incidencias y pendientes de auditoría</p>
+                        <p>Monitor operativo de incidencias y pendientes de auditorÃ­a</p>
                     </div>
                 </div>
-                <div class="user-pill">👤 {st.session_state.get("name", "Usuario")} · {st.session_state.get("role", "")}</div>
+                <div class="user-pill">ðŸ‘¤ {st.session_state.get("name", "Usuario")} Â· {st.session_state.get("role", "")}</div>
             </div>
         </div>
         """,
@@ -946,25 +946,25 @@ def header():
 
 
 def sidebar_nav():
-    st.sidebar.markdown("### 🛡️ Auditoría")
+    st.sidebar.markdown("### ðŸ›¡ï¸ AuditorÃ­a")
     st.sidebar.caption("Panel de control")
 
     if "page" not in st.session_state:
         st.session_state.page = "Dashboard"
 
-    pages = ["Dashboard", "Pendientes",  "Bitácora"]
+    pages = ["Dashboard", "Pendientes",  "BitÃ¡cora"]
 
     if st.session_state.get("role") == "Administrador":
-        pages += ["Usuarios", "Catálogos"]
+        pages += ["Usuarios", "CatÃ¡logos"]
 
     for page in pages:
         icon = {
-            "Dashboard": "📊",
-            "Pendientes": "📋",
-            "Bitácora": "🧾",
-            "Usuarios": "👥",
-            "Catálogos": "⚙️",
-        }.get(page, "•")
+            "Dashboard": "ðŸ“Š",
+            "Pendientes": "ðŸ“‹",
+            "BitÃ¡cora": "ðŸ§¾",
+            "Usuarios": "ðŸ‘¥",
+            "CatÃ¡logos": "âš™ï¸",
+        }.get(page, "â€¢")
 
         if st.sidebar.button(
             f"{icon} {page}",
@@ -980,7 +980,7 @@ def sidebar_nav():
     st.sidebar.markdown("---")
     st.sidebar.caption(f"Usuario: {st.session_state.get('user', '')}")
 
-    if st.sidebar.button("Cerrar sesión", use_container_width=True):
+    if st.sidebar.button("Cerrar sesiÃ³n", use_container_width=True):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
@@ -1014,7 +1014,7 @@ def page_title(title, subtitle="", button_label=None, button_key=None):
 # FILTROS
 # ==========================================================
 def options_from_filtered_df(df, column, filters=None):
-    """Devuelve opciones dinámicas tomando en cuenta los filtros ya seleccionados."""
+    """Devuelve opciones dinÃ¡micas tomando en cuenta los filtros ya seleccionados."""
     if column not in df.columns:
         return ["Todos"]
 
@@ -1034,7 +1034,7 @@ def options_from_filtered_df(df, column, filters=None):
 
 
 def normalize_filter_value(key, options):
-    """Evita errores cuando un filtro anterior deja sin valor válido a otro filtro."""
+    """Evita errores cuando un filtro anterior deja sin valor vÃ¡lido a otro filtro."""
     current = st.session_state.get(key, "Todos")
     if current not in options:
         st.session_state[key] = "Todos"
@@ -1043,7 +1043,7 @@ def normalize_filter_value(key, options):
 
 
 def clean_multiselect_values(key, options):
-    """Mantiene válidos los valores seleccionados en filtros multiselección."""
+    """Mantiene vÃ¡lidos los valores seleccionados en filtros multiselecciÃ³n."""
     current = st.session_state.get(key, [])
 
     if isinstance(current, str):
@@ -1058,7 +1058,7 @@ def clean_multiselect_values(key, options):
 
 
 def options_from_filtered_df_multi(df, column, filters=None):
-    """Devuelve opciones dinámicas considerando filtros multiselección ya aplicados."""
+    """Devuelve opciones dinÃ¡micas considerando filtros multiselecciÃ³n ya aplicados."""
     if column not in df.columns:
         return []
 
@@ -1086,7 +1086,7 @@ def options_from_filtered_df_multi(df, column, filters=None):
 
 
 def apply_dashboard_multifilters(df):
-    """Filtros del Dashboard en modo multifiltro dinámico, incluyendo rango de fecha."""
+    """Filtros del Dashboard en modo multifiltro dinÃ¡mico, incluyendo rango de fecha."""
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
 
     cols_filter = {
@@ -1163,7 +1163,7 @@ def apply_dashboard_multifilters(df):
 
     with b1:
         texto_key = "dash_texto_multi"
-        texto = st.text_input("Buscar", placeholder="ID, descripción...", key=texto_key)
+        texto = st.text_input("Buscar", placeholder="ID, descripciÃ³n...", key=texto_key)
 
     with b2:
         fecha_desde = st.date_input(
@@ -1189,12 +1189,12 @@ def apply_dashboard_multifilters(df):
         if vals and col in dff.columns:
             dff = dff[dff[col].astype(str).isin(vals)]
 
-    if "Fecha Creación" in dff.columns and (fecha_desde or fecha_hasta):
-        fechas = pd.to_datetime(dff["Fecha Creación"], errors="coerce").dt.date
+    if "Fecha CreaciÃ³n" in dff.columns and (fecha_desde or fecha_hasta):
+        fechas = pd.to_datetime(dff["Fecha CreaciÃ³n"], errors="coerce").dt.date
 
         if fecha_desde:
             dff = dff[fechas >= fecha_desde]
-            fechas = pd.to_datetime(dff["Fecha Creación"], errors="coerce").dt.date
+            fechas = pd.to_datetime(dff["Fecha CreaciÃ³n"], errors="coerce").dt.date
 
         if fecha_hasta:
             dff = dff[fechas <= fecha_hasta]
@@ -1215,19 +1215,19 @@ def apply_dashboard_multifilters(df):
             + (1 if fecha_hasta else 0)
         )
         st.markdown(
-            f'<div class="small-note" style="margin-top:9px;">Filtros activos: <b>{active_filters}</b> · Mostrando <b>{len(dff)}</b> resultado(s)</div>',
+            f'<div class="small-note" style="margin-top:9px;">Filtros activos: <b>{active_filters}</b> Â· Mostrando <b>{len(dff)}</b> resultado(s)</div>',
             unsafe_allow_html=True
         )
 
     with b5:
-        if st.button("↻ Limpiar", key="dash_clear_multifilters", use_container_width=True):
+        if st.button("â†» Limpiar", key="dash_clear_multifilters", use_container_width=True):
             for k in list(cols_filter.values()) + [texto_key, "dash_fecha_desde", "dash_fecha_hasta"]:
                 st.session_state.pop(k, None)
             st.rerun()
 
     with b6:
         st.download_button(
-            "⬇ Exportar",
+            "â¬‡ Exportar",
             filtered_excel_bytes(dff),
             "dashboard_filtrado.xlsx",
             use_container_width=True,
@@ -1307,7 +1307,7 @@ def apply_filters(df, key_prefix="f"):
 
     with f6:
         texto_key = f"{key_prefix}_texto"
-        texto = st.text_input("Buscar", placeholder="ID, descripción, comentario...", key=texto_key)
+        texto = st.text_input("Buscar", placeholder="ID, descripciÃ³n, comentario...", key=texto_key)
 
     dff = df.copy()
 
@@ -1326,14 +1326,14 @@ def apply_filters(df, key_prefix="f"):
     b1, b2, b3 = st.columns([.8, .9, 4])
 
     with b1:
-        if st.button("↻ Limpiar filtros", key=f"{key_prefix}_clear_filters"):
+        if st.button("â†» Limpiar filtros", key=f"{key_prefix}_clear_filters"):
             for k in list(cols_filter.values()) + [texto_key]:
                 st.session_state.pop(k, None)
             st.rerun()
 
     with b2:
         st.download_button(
-            "⬇ Exportar",
+            "â¬‡ Exportar",
             filtered_excel_bytes(dff),
             "pendientes_filtrados.xlsx",
             use_container_width=True,
@@ -1365,7 +1365,7 @@ def render_report_table(data, dff):
     h = st.columns([1.05, .85, .72, 1.05, 1.25, .9, 1.05, .95, 1.95, .52])
     for col, title in zip(
         h,
-        ["ID", "Fecha", "Hotel", "Departamento", "Tipo", "Prioridad", "Estatus", "SLA", "Descripción", "Acción"]
+        ["ID", "Fecha", "Hotel", "Departamento", "Tipo", "Prioridad", "Estatus", "SLA", "DescripciÃ³n", "AcciÃ³n"]
     ):
         with col:
             st.markdown(title)
@@ -1379,7 +1379,7 @@ def render_report_table(data, dff):
 
     for _, row in dff.reset_index().iterrows():
         rid = str(row["ID"])
-        desc = str(row["Descripción"])
+        desc = str(row["DescripciÃ³n"])
         desc_short = desc if len(desc) <= 105 else desc[:102] + "..."
 
         hotel_short = (
@@ -1393,7 +1393,7 @@ def render_report_table(data, dff):
 
         sla = sla_info(row)
         row_classes = f"table-row-wrap row-{sla['class']}"
-        if normalize_text(row["Prioridad"]) in ["Crítica", "Critica"]:
+        if normalize_text(row["Prioridad"]) in ["CrÃ­tica", "Critica"]:
             row_classes += " row-critical"
         st.markdown(f'<div class="{row_classes}">', unsafe_allow_html=True)
         c = st.columns([1.05, .85, .72, 1.05, 1.25, .9, 1.05, .95, 1.95, .52])
@@ -1401,7 +1401,7 @@ def render_report_table(data, dff):
         with c[0]:
             st.markdown(f'<div class="cell-text"><b>{rid}</b></div>', unsafe_allow_html=True)
         with c[1]:
-            st.markdown(f'<div class="cell-muted">{safe_date(row["Fecha Creación"])}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="cell-muted">{safe_date(row["Fecha CreaciÃ³n"])}</div>', unsafe_allow_html=True)
         with c[2]:
             st.markdown(f'<div class="cell-text">{hotel_short}</div>', unsafe_allow_html=True)
         with c[3]:
@@ -1417,19 +1417,19 @@ def render_report_table(data, dff):
         with c[8]:
             st.markdown(f'<div class="cell-text">{desc_short}</div>', unsafe_allow_html=True)
         with c[9]:
-            with st.popover("⋮"):
+            with st.popover("â‹®"):
                 st.markdown('<div class="action-menu-note"><b>Acciones</b></div>', unsafe_allow_html=True)
 
-                if st.button("✏️ Editar", key=f"edit_{rid}", use_container_width=True):
-                    # Streamlit solo permite un st.dialog abierto por ejecución.
-                    # Por eso limpiamos primero la bitácora antes de abrir edición.
+                if st.button("âœï¸ Editar", key=f"edit_{rid}", use_container_width=True):
+                    # Streamlit solo permite un st.dialog abierto por ejecuciÃ³n.
+                    # Por eso limpiamos primero la bitÃ¡cora antes de abrir ediciÃ³n.
                     st.session_state.pop("show_bitacora_id", None)
                     st.session_state["edit_id"] = rid
                     st.rerun()
 
-                if st.button("🧾 Bitácora", key=f"bit_{rid}", use_container_width=True):
-                    # Streamlit solo permite un st.dialog abierto por ejecución.
-                    # Por eso limpiamos primero edición antes de abrir bitácora.
+                if st.button("ðŸ§¾ BitÃ¡cora", key=f"bit_{rid}", use_container_width=True):
+                    # Streamlit solo permite un st.dialog abierto por ejecuciÃ³n.
+                    # Por eso limpiamos primero ediciÃ³n antes de abrir bitÃ¡cora.
                     st.session_state.pop("edit_id", None)
                     st.session_state["show_bitacora_id"] = rid
                     st.rerun()
@@ -1438,14 +1438,14 @@ def render_report_table(data, dff):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # IMPORTANTE: llamar solo un diálogo por ejecución.
+    # IMPORTANTE: llamar solo un diÃ¡logo por ejecuciÃ³n.
     if st.session_state.get("edit_id"):
         render_edit_panel(data, estados)
     elif st.session_state.get("show_bitacora_id"):
         render_bitacora_panel(data)
 
 
-@st.dialog("✏️ Editar incidencia", width="large")
+@st.dialog("âœï¸ Editar incidencia", width="large")
 def render_edit_panel(data, estados):
     edit_id = st.session_state.get("edit_id")
 
@@ -1461,10 +1461,10 @@ def render_edit_panel(data, estados):
 
     idx = hit.index[0]
     row = hit.iloc[0]
-    prioridades = get_catalog(data, "Prioridad", ["Baja", "Media", "Alta", "Crítica"])
+    prioridades = get_catalog(data, "Prioridad", ["Baja", "Media", "Alta", "CrÃ­tica"])
 
     st.markdown(f"**Incidencia:** `{edit_id}`")
-    st.caption("Actualiza campos clave. Cada cambio quedará registrado en la bitácora.")
+    st.caption("Actualiza campos clave. Cada cambio quedarÃ¡ registrado en la bitÃ¡cora.")
 
     with st.form(f"form_edit_{edit_id}"):
         c1, c2, c3 = st.columns([.32, .32, .36])
@@ -1481,11 +1481,11 @@ def render_edit_panel(data, estados):
 
         with c3:
             current_due = parse_any_date(row.get("Fecha Compromiso", ""))
-            default_due = current_due.date() if not pd.isna(current_due) else suggested_due_date(nueva_prioridad, row.get("Fecha Creación", ""))
+            default_due = current_due.date() if not pd.isna(current_due) else suggested_due_date(nueva_prioridad, row.get("Fecha CreaciÃ³n", ""))
             nueva_fecha = st.date_input("Fecha compromiso", value=default_due)
 
-        nueva_descripcion = st.text_area("Descripción", value=str(row.get("Descripción", "")), height=110)
-        comentario = st.text_area("Comentario de actualización", placeholder="Agrega el comentario de seguimiento...", height=90)
+        nueva_descripcion = st.text_area("DescripciÃ³n", value=str(row.get("DescripciÃ³n", "")), height=110)
+        comentario = st.text_area("Comentario de actualizaciÃ³n", placeholder="Agrega el comentario de seguimiento...", height=90)
 
         b1, b2 = st.columns([.25, .75])
         with b1:
@@ -1498,13 +1498,13 @@ def render_edit_panel(data, estados):
             anterior_estatus = str(data["Pendientes"].loc[idx, "Estatus"])
             anterior_prioridad = str(data["Pendientes"].loc[idx, "Prioridad"])
             anterior_fecha = str(data["Pendientes"].loc[idx, "Fecha Compromiso"])
-            anterior_desc = str(data["Pendientes"].loc[idx, "Descripción"])
+            anterior_desc = str(data["Pendientes"].loc[idx, "DescripciÃ³n"])
             nueva_fecha_txt = nueva_fecha.strftime("%Y-%m-%d") if nueva_fecha else ""
 
-            if anterior_estatus != str(nuevo_estatus): cambios.append(f"Estatus: {anterior_estatus} → {nuevo_estatus}")
-            if anterior_prioridad != str(nueva_prioridad): cambios.append(f"Prioridad: {anterior_prioridad} → {nueva_prioridad}")
-            if anterior_fecha != nueva_fecha_txt: cambios.append(f"Fecha compromiso: {anterior_fecha or 'Sin fecha'} → {nueva_fecha_txt}")
-            if anterior_desc != str(nueva_descripcion): cambios.append("Descripción actualizada")
+            if anterior_estatus != str(nuevo_estatus): cambios.append(f"Estatus: {anterior_estatus} â†’ {nuevo_estatus}")
+            if anterior_prioridad != str(nueva_prioridad): cambios.append(f"Prioridad: {anterior_prioridad} â†’ {nueva_prioridad}")
+            if anterior_fecha != nueva_fecha_txt: cambios.append(f"Fecha compromiso: {anterior_fecha or 'Sin fecha'} â†’ {nueva_fecha_txt}")
+            if anterior_desc != str(nueva_descripcion): cambios.append("DescripciÃ³n actualizada")
 
             if not cambios and not comentario.strip():
                 st.warning("No hay cambios ni comentario para guardar.")
@@ -1513,13 +1513,13 @@ def render_edit_panel(data, estados):
             data["Pendientes"].loc[idx, "Estatus"] = str(nuevo_estatus)
             data["Pendientes"].loc[idx, "Prioridad"] = str(nueva_prioridad)
             data["Pendientes"].loc[idx, "Fecha Compromiso"] = nueva_fecha_txt
-            data["Pendientes"].loc[idx, "Descripción"] = str(nueva_descripcion).strip()
-            data["Pendientes"].loc[idx, "Última Actualización"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            data["Pendientes"].loc[idx, "DescripciÃ³n"] = str(nueva_descripcion).strip()
+            data["Pendientes"].loc[idx, "Ãšltima ActualizaciÃ³n"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             close_status_if_needed(data, idx, nuevo_estatus)
 
-            accion = "Actualización de incidencia" if cambios else "Comentario"
+            accion = "ActualizaciÃ³n de incidencia" if cambios else "Comentario"
             detalle_cambios = " | ".join(cambios) if cambios else "Sin cambios de campos."
-            texto = comentario.strip() if comentario.strip() else "Actualización registrada."
+            texto = comentario.strip() if comentario.strip() else "ActualizaciÃ³n registrada."
             comentario_final = f"{texto}\nCambios: {detalle_cambios}"
             register_change(data, edit_id, accion, comentario_final, anterior_estatus, nuevo_estatus)
 
@@ -1534,7 +1534,7 @@ def render_edit_panel(data, estados):
             st.rerun()
 
 
-@st.dialog("🧾 Bitácora de incidencia", width="large")
+@st.dialog("ðŸ§¾ BitÃ¡cora de incidencia", width="large")
 def render_bitacora_panel(data):
     bit_id = st.session_state.get("show_bitacora_id")
 
@@ -1548,31 +1548,31 @@ def render_bitacora_panel(data):
     bit = bit[bit["ID Pendiente"].astype(str) == bit_id].sort_values("Fecha", ascending=False)
 
     if bit.empty:
-        st.info("Esta incidencia todavía no tiene movimientos registrados.")
+        st.info("Esta incidencia todavÃ­a no tiene movimientos registrados.")
     else:
         for _, b in bit.iterrows():
             st.markdown(
                 f"""
                 <div class="timeline-card">
                     <div style="display:flex;justify-content:space-between;gap:1rem;">
-                        <div style="font-weight:900;color:#0f172a;">{b["Acción"]}</div>
+                        <div style="font-weight:900;color:#0f172a;">{b["AcciÃ³n"]}</div>
                         <div style="font-size:12px;color:#64748b;">{safe_date(b["Fecha"], with_time=True)}</div>
                     </div>
                     <div style="font-size:13px;color:#475569;margin-top:8px;">{b["Comentario"]}</div>
-                    <div style="font-size:12px;color:#64748b;margin-top:8px;">{b["Estado Anterior"]} → {b["Estado Nuevo"]}</div>
+                    <div style="font-size:12px;color:#64748b;margin-top:8px;">{b["Estado Anterior"]} â†’ {b["Estado Nuevo"]}</div>
                     <div style="font-size:12px;color:#94a3b8;margin-top:6px;">Usuario: {b["Usuario"]}</div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-    if st.button("Cerrar bitácora", key=f"close_bit_{bit_id}"):
+    if st.button("Cerrar bitÃ¡cora", key=f"close_bit_{bit_id}"):
         st.session_state.pop("show_bitacora_id", None)
         st.rerun()
 
 
 def render_dashboard_simple_table(dff):
-    """Tabla simple para el Dashboard, sin acciones de edición ni bitácora."""
+    """Tabla simple para el Dashboard, sin acciones de ediciÃ³n ni bitÃ¡cora."""
     st.markdown('<div class="detail-card"><div class="detail-title">Detalle de incidencias</div>', unsafe_allow_html=True)
 
     if dff.empty:
@@ -1581,13 +1581,13 @@ def render_dashboard_simple_table(dff):
         return
 
     cols = [
-        "ID", "Fecha Creación", "Hotel", "Departamento", "Tipo de Incidencia",
-        "Prioridad", "Estatus", "SLA", "Fecha Compromiso", "Descripción"
+        "ID", "Fecha CreaciÃ³n", "Hotel", "Departamento", "Tipo de Incidencia",
+        "Prioridad", "Estatus", "SLA", "Fecha Compromiso", "DescripciÃ³n"
     ]
 
     table_df = dff[[c for c in cols if c in dff.columns]].copy()
 
-    for col in ["Fecha Creación", "Fecha Compromiso"]:
+    for col in ["Fecha CreaciÃ³n", "Fecha Compromiso"]:
         if col in table_df.columns:
             table_df[col] = table_df[col].apply(safe_date)
 
@@ -1614,7 +1614,7 @@ def kpi_cards(df):
         for _, r in df.iterrows():
             if sla_info(r)["class"] == "overdue":
                 vencidas += 1
-    vals = [("Total", total, "Incidencias registradas", "📋"), ("Abiertas", abiertas, f"{(abiertas / total * 100 if total else 0):.1f}% del total", "🕒"), ("En proceso", en_proceso, f"{(en_proceso / total * 100 if total else 0):.1f}% del total", "⏱️"), ("Vencidas", vencidas, f"{(vencidas / total * 100 if total else 0):.1f}% del total", "⚠️"), ("Completadas", completadas, f"{(completadas / total * 100 if total else 0):.1f}% del total", "✅")]
+    vals = [("Total", total, "Incidencias registradas", "ðŸ“‹"), ("Abiertas", abiertas, f"{(abiertas / total * 100 if total else 0):.1f}% del total", "ðŸ•’"), ("En proceso", en_proceso, f"{(en_proceso / total * 100 if total else 0):.1f}% del total", "â±ï¸"), ("Vencidas", vencidas, f"{(vencidas / total * 100 if total else 0):.1f}% del total", "âš ï¸"), ("Completadas", completadas, f"{(completadas / total * 100 if total else 0):.1f}% del total", "âœ…")]
     cols = st.columns(5)
     for col, (label, value, sub, icon) in zip(cols, vals):
         with col:
@@ -1626,15 +1626,15 @@ def executive_summary_cards(df):
         return
     top_depto = df["Departamento"].value_counts().idxmax() if "Departamento" in df and not df.empty else "-"
     top_hotel = df["Hotel"].value_counts().idxmax() if "Hotel" in df and not df.empty else "-"
-    fc = pd.to_datetime(df.get("Fecha Creación", ""), errors="coerce")
+    fc = pd.to_datetime(df.get("Fecha CreaciÃ³n", ""), errors="coerce")
     current_month = fc.dt.to_period("M") == pd.Timestamp(date.today()).to_period("M")
     cerradas_mes = df[current_month & df["Estatus"].astype(str).isin(CLOSED_STATUS)].shape[0]
     res_days = []
     for _, r in df[df["Estatus"].astype(str).isin(CLOSED_STATUS)].iterrows():
-        f1 = parse_any_date(r.get("Fecha Creación", "")); f2 = parse_any_date(r.get("Fecha Cierre", ""))
+        f1 = parse_any_date(r.get("Fecha CreaciÃ³n", "")); f2 = parse_any_date(r.get("Fecha Cierre", ""))
         if not pd.isna(f1) and not pd.isna(f2): res_days.append(max(0, int((f2 - f1).days)))
     avg_days = sum(res_days) / len(res_days) if res_days else 0
-    vals = [("Área con más incidencias", top_depto, "Concentración operativa"), ("Hotel con más incidencias", top_hotel, "Mayor volumen registrado"), ("Cerradas este mes", cerradas_mes, "Productividad mensual"), ("Tiempo prom. resolución", f"{avg_days:.1f} días", "Solo incidencias cerradas")]
+    vals = [("Ãrea con mÃ¡s incidencias", top_depto, "ConcentraciÃ³n operativa"), ("Hotel con mÃ¡s incidencias", top_hotel, "Mayor volumen registrado"), ("Cerradas este mes", cerradas_mes, "Productividad mensual"), ("Tiempo prom. resoluciÃ³n", f"{avg_days:.1f} dÃ­as", "Solo incidencias cerradas")]
     cols = st.columns(4)
     for col, (label, value, sub) in zip(cols, vals):
         with col:
@@ -1643,7 +1643,7 @@ def executive_summary_cards(df):
 
 def dashboard_page(data):
     df = data["Pendientes"].copy()
-    page_title("Dashboard", "Resumen ejecutivo de incidencias, SLA, estatus y comportamiento histórico.")
+    page_title("Dashboard", "Resumen ejecutivo de incidencias, SLA, estatus y comportamiento histÃ³rico.")
 
     dff = apply_dashboard_multifilters(df)
     dff_sla = add_sla_columns(dff)
@@ -1665,7 +1665,7 @@ def dashboard_page(data):
         else: st.caption("Sin datos para graficar.")
         st.markdown('</div>', unsafe_allow_html=True)
     with g2:
-        st.markdown('<div class="detail-card"><div class="detail-title">Tipos de incidencia más comunes</div>', unsafe_allow_html=True)
+        st.markdown('<div class="detail-card"><div class="detail-title">Tipos de incidencia mÃ¡s comunes</div>', unsafe_allow_html=True)
         if not dff.empty:
             top = dff.groupby("Tipo de Incidencia").size().reset_index(name="Cantidad").sort_values("Cantidad", ascending=False).head(8)
             fig = px.bar(top, x="Cantidad", y="Tipo de Incidencia", orientation="h", text="Cantidad")
@@ -1686,13 +1686,13 @@ def dashboard_page(data):
     with g4:
         st.markdown('<div class="detail-card"><div class="detail-title">Tendencia mensual</div>', unsafe_allow_html=True)
         if not dff.empty:
-            temp = dff.copy(); temp["Mes"] = pd.to_datetime(temp["Fecha Creación"], errors="coerce").dt.to_period("M").astype(str); temp = temp[temp["Mes"] != "NaT"]
+            temp = dff.copy(); temp["Mes"] = pd.to_datetime(temp["Fecha CreaciÃ³n"], errors="coerce").dt.to_period("M").astype(str); temp = temp[temp["Mes"] != "NaT"]
             if not temp.empty:
                 month_df = temp.groupby("Mes").size().reset_index(name="Cantidad")
                 fig = px.line(month_df, x="Mes", y="Cantidad", markers=True)
                 fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
                 st.plotly_chart(fig, use_container_width=True)
-            else: st.caption("Sin fechas válidas para graficar.")
+            else: st.caption("Sin fechas vÃ¡lidas para graficar.")
         else: st.caption("Sin datos para graficar.")
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1701,7 +1701,7 @@ def dashboard_page(data):
 # KANBAN
 # ==========================================================
 def kanban_page(data):
-    page_title( "Vista rápida por estatus para seguimiento operativo sin cambiar la base de datos.")
+    page_title( "Vista rÃ¡pida por estatus para seguimiento operativo sin cambiar la base de datos.")
     df = data["Pendientes"].copy()
     dff = apply_filters(df, key_prefix="kanban")
     estados = get_catalog(data, "Estatus", ["Pendiente", "En proceso", "En espera de respuesta", "Escalado", "Resuelto", "Cerrado"])
@@ -1715,7 +1715,7 @@ def kanban_page(data):
             for _, r in col_df.head(12).iterrows():
                 info = sla_info(r)
                 cls = "overdue" if info["class"] == "overdue" else "warning" if info["class"] == "warning" else ""
-                st.markdown(f'''<div class="kanban-card {cls}"><b>{r.get("ID", "")}</b><br><span style="font-size:12px;color:#64748b;">{r.get("Hotel", "")} · {r.get("Departamento", "")}</span><br>{priority_dot(r.get("Prioridad", ""))}{badge(r.get("Prioridad", ""))} {badge(info["label"])}<div style="font-size:12.5px;color:#334155;margin-top:8px;">{str(r.get("Descripción", ""))[:95]}</div></div>''', unsafe_allow_html=True)
+                st.markdown(f'''<div class="kanban-card {cls}"><b>{r.get("ID", "")}</b><br><span style="font-size:12px;color:#64748b;">{r.get("Hotel", "")} Â· {r.get("Departamento", "")}</span><br>{priority_dot(r.get("Prioridad", ""))}{badge(r.get("Prioridad", ""))} {badge(info["label"])}<div style="font-size:12.5px;color:#334155;margin-top:8px;">{str(r.get("DescripciÃ³n", ""))[:95]}</div></div>''', unsafe_allow_html=True)
                 with st.popover("Mover / ver"):
                     new_status = st.selectbox("Cambiar estatus", estados, index=estados.index(est) if est in estados else 0, key=f"kanban_status_{r.get('ID')}")
                     comment = st.text_input("Comentario", key=f"kanban_comment_{r.get('ID')}", placeholder="Opcional")
@@ -1724,7 +1724,7 @@ def kanban_page(data):
                         if not hit.empty:
                             idx = hit.index[0]; old = str(data["Pendientes"].loc[idx, "Estatus"])
                             data["Pendientes"].loc[idx, "Estatus"] = new_status
-                            data["Pendientes"].loc[idx, "Última Actualización"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            data["Pendientes"].loc[idx, "Ãšltima ActualizaciÃ³n"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             close_status_if_needed(data, idx, new_status)
                             register_change(data, str(r.get("ID")), "Cambio desde Kanban", comment.strip() or "Estatus actualizado desde vista Kanban.", old, new_status)
                             save_data(data); clear_cache_and_rerun()
@@ -1736,7 +1736,7 @@ def kanban_page(data):
 # ==========================================================
 # PENDIENTES
 # ==========================================================
-@st.dialog("➕ Nueva incidencia", width="large")
+@st.dialog("âž• Nueva incidencia", width="large")
 def render_create_incidence_dialog(data):
     """Formulario de nueva incidencia en ventana flotante.
     Los desplegables abren sin datos seleccionados.
@@ -1800,13 +1800,14 @@ def render_create_incidence_dialog(data):
             )
 
         with c3:
-            fecha_comp = st.date_input(
+            st.text_input(
                 "Fecha compromiso",
-                value=None,
+                value="Se calculará automáticamente según la prioridad",
+                disabled=True,
                 key="new_fecha_modal"
             )
             descripcion = st.text_area(
-                "Descripción",
+                "DescripciÃ³n",
                 value="",
                 height=100,
                 placeholder="Detalle la incidencia...",
@@ -1827,7 +1828,7 @@ def render_create_incidence_dialog(data):
                 "Impacto": impacto,
                 "Prioridad": prioridad,
                 "Estatus inicial": estatus,
-                "Descripción": descripcion,
+                "DescripciÃ³n": descripcion,
             }
 
             campos_vacios = [
@@ -1850,7 +1851,7 @@ def render_create_incidence_dialog(data):
                         impacto,
                         prioridad,
                         estatus,
-                        fecha_comp.strftime("%Y-%m-%d") if fecha_comp else suggested_due_date(prioridad, datetime.now().strftime("%Y-%m-%d")).strftime("%Y-%m-%d"),
+                        suggested_due_date(prioridad, datetime.now().strftime("%Y-%m-%d")).strftime("%Y-%m-%d"),
                         descripcion.strip(),
                         "",
                         datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1865,7 +1866,7 @@ def render_create_incidence_dialog(data):
                         pid,
                         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         st.session_state.get("user", ""),
-                        "Creación",
+                        "CreaciÃ³n",
                         "Incidencia creada.",
                         "",
                         estatus
@@ -1898,7 +1899,7 @@ def render_create_incidence_dialog(data):
 def pendientes_page(data):
     create_clicked = page_title(
         "Pendientes / Incidencias",
-        "Reporte operativo con filtros dinámicos, menú de acciones y bitácora por incidencia.",
+        "Reporte operativo con filtros dinÃ¡micos, menÃº de acciones y bitÃ¡cora por incidencia.",
         "+ Nueva incidencia",
         "btn_new_incidence"
     )
@@ -1923,13 +1924,13 @@ def pendientes_page(data):
 
 
 # ==========================================================
-# BITÁCORA GENERAL
+# BITÃCORA GENERAL
 # ==========================================================
 def bitacora_page(data):
-    page_title("Bitácora general", "Consulta centralizada de todos los movimientos registrados.")
+    page_title("BitÃ¡cora general", "Consulta centralizada de todos los movimientos registrados.")
 
     bit = data["Bitacora"].copy()
-    q = st.text_input("Buscar en bitácora", placeholder="ID, usuario, comentario...")
+    q = st.text_input("Buscar en bitÃ¡cora", placeholder="ID, usuario, comentario...")
 
     if q:
         mask = bit.astype(str).apply(
@@ -1945,7 +1946,7 @@ def bitacora_page(data):
 # USUARIOS
 # ==========================================================
 def usuarios_page(data):
-    page_title("Gestión de usuarios", "Administración de accesos, roles y estados de usuarios.")
+    page_title("GestiÃ³n de usuarios", "AdministraciÃ³n de accesos, roles y estados de usuarios.")
 
     st.markdown('<div class="user-panel">', unsafe_allow_html=True)
     st.markdown("#### Crear usuario")
@@ -1958,7 +1959,7 @@ def usuarios_page(data):
         with c2:
             nombre = st.text_input("Nombre")
         with c3:
-            password = st.text_input("Contraseña", type="password")
+            password = st.text_input("ContraseÃ±a", type="password")
         with c4:
             rol = st.selectbox("Rol", ["Administrador", "Auditor"])
         with c5:
@@ -1968,7 +1969,7 @@ def usuarios_page(data):
 
         if crear:
             if not normalize_text(usuario) or not normalize_text(nombre) or not normalize_text(password):
-                st.error("Usuario, nombre y contraseña son obligatorios.")
+                st.error("Usuario, nombre y contraseÃ±a son obligatorios.")
             else:
                 users = data["Usuarios"].copy()
                 if usuario in users["Usuario"].astype(str).tolist():
@@ -2056,7 +2057,7 @@ def usuarios_page(data):
                 with c1:
                     nuevo_nombre = st.text_input("Nombre", value=str(row["Nombre"]))
                 with c2:
-                    nueva_password = st.text_input("Contraseña", value=str(row["Password"]), type="password")
+                    nueva_password = st.text_input("ContraseÃ±a", value=str(row["Password"]), type="password")
                 with c3:
                     nuevo_rol = st.selectbox(
                         "Rol",
@@ -2091,10 +2092,10 @@ def usuarios_page(data):
 
 
 # ==========================================================
-# CATÁLOGOS
+# CATÃLOGOS
 # ==========================================================
 def catalogos_page(data):
-    page_title("Catálogos", "Valores disponibles para los desplegables y clasificaciones.")
+    page_title("CatÃ¡logos", "Valores disponibles para los desplegables y clasificaciones.")
 
     cat = data["Catalogos"].copy()
 
@@ -2105,10 +2106,10 @@ def catalogos_page(data):
         num_rows="dynamic"
     )
 
-    if st.button("Guardar catálogos", type="primary"):
+    if st.button("Guardar catÃ¡logos", type="primary"):
         data["Catalogos"] = edited.fillna("")
         save_data(data)
-        st.success("Catálogos actualizados.")
+        st.success("CatÃ¡logos actualizados.")
         clear_cache_and_rerun()
 
 
@@ -2136,15 +2137,17 @@ def main():
         dashboard_page(data)
     elif page == "Pendientes":
         pendientes_page(data)
-    elif page == "Bitácora":
+    elif page == "BitÃ¡cora":
         bitacora_page(data)
     elif page == "Usuarios" and st.session_state.get("role") == "Administrador":
         usuarios_page(data)
-    elif page == "Catálogos" and st.session_state.get("role") == "Administrador":
+    elif page == "CatÃ¡logos" and st.session_state.get("role") == "Administrador":
         catalogos_page(data)
     else:
-        st.warning("No tienes acceso a este módulo.")
+        st.warning("No tienes acceso a este mÃ³dulo.")
 
 
 if __name__ == "__main__":
     main()
+
+
