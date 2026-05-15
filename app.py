@@ -886,7 +886,10 @@ def dashboard_executive_values(df):
         ]
     top_depto = df["Departamento"].value_counts().idxmax() if "Departamento" in df else "-"
     top_hotel = df["Hotel"].value_counts().idxmax() if "Hotel" in df else "-"
-    fc = pd.to_datetime(df.get("Fecha CreaciÃ³n", ""), errors="coerce")
+    fecha_col = "Fecha CreaciÃ³n" if "Fecha CreaciÃ³n" in df.columns else None
+    if fecha_col is None:
+        fecha_col = "Fecha Creación" if "Fecha Creación" in df.columns else None
+    fc = pd.to_datetime(df[fecha_col], errors="coerce") if fecha_col else pd.Series(pd.NaT, index=df.index)
     current_month = fc.dt.to_period("M") == pd.Timestamp(date.today()).to_period("M")
     cerradas_mes = df[current_month & df["Estatus"].astype(str).isin(CLOSED_STATUS)].shape[0]
     res_days = []
@@ -1050,9 +1053,11 @@ def dashboard_pdf_bytes(dff, dff_sla, report_filters):
             story.extend([chart_table, Spacer(1, 8)])
 
     story.append(Paragraph("Detalle de incidencias", section_style))
-    cols = ["ID", "Fecha CreaciÃ³n", "Hotel", "Departamento", "Tipo de Incidencia", "Prioridad", "Estatus", "SLA", "Fecha Compromiso", "DescripciÃ³n"]
+    fecha_creacion_col = "Fecha CreaciÃ³n" if "Fecha CreaciÃ³n" in dff_sla.columns else "Fecha Creación"
+    descripcion_col = "DescripciÃ³n" if "DescripciÃ³n" in dff_sla.columns else "Descripción"
+    cols = ["ID", fecha_creacion_col, "Hotel", "Departamento", "Tipo de Incidencia", "Prioridad", "Estatus", "SLA", "Fecha Compromiso", descripcion_col]
     table_df = dff_sla[[c for c in cols if c in dff_sla.columns]].copy()
-    for col in ["Fecha CreaciÃ³n", "Fecha Compromiso"]:
+    for col in [fecha_creacion_col, "Fecha Compromiso"]:
         if col in table_df.columns:
             table_df[col] = table_df[col].apply(safe_date)
     if table_df.empty:
