@@ -1352,14 +1352,20 @@ def dashboard_kpi_values(df):
 
 def dashboard_executive_values(df):
     if df.empty:
-        return [
+        vals = [
             ("Area con mas incidencias", "-", "Concentracion operativa"),
-            ("Hotel con mas incidencias", "-", "Mayor volumen registrado"),
             ("Cerradas este mes", 0, "Productividad mensual"),
             ("Tiempo prom. resolucion", "0.0 dias", "Solo incidencias cerradas"),
         ]
+        return vals
     top_depto = df["Departamento"].value_counts().idxmax() if "Departamento" in df else "-"
-    top_hotel = df["Hotel"].value_counts().idxmax() if "Hotel" in df else "-"
+    hotels = []
+    if "Hotel" in df.columns:
+        hotels = [
+            h for h in df["Hotel"].astype(str).str.strip().unique().tolist()
+            if h and h.lower() != "nan"
+        ]
+    top_hotel = df["Hotel"].value_counts().idxmax() if len(hotels) > 1 else "-"
     fecha_col = "Fecha CreaciÃ³n" if "Fecha CreaciÃ³n" in df.columns else None
     if fecha_col is None:
         fecha_col = "Fecha Creación" if "Fecha Creación" in df.columns else None
@@ -1373,12 +1379,14 @@ def dashboard_executive_values(df):
         if not pd.isna(f1) and not pd.isna(f2):
             res_days.append(max(0, int((f2 - f1).days)))
     avg_days = sum(res_days) / len(res_days) if res_days else 0
-    return [
+    vals = [
         ("Area con mas incidencias", top_depto, "Concentracion operativa"),
-        ("Hotel con mas incidencias", top_hotel, "Mayor volumen registrado"),
         ("Cerradas este mes", cerradas_mes, "Productividad mensual"),
         ("Tiempo prom. resolucion", f"{avg_days:.1f} dias", "Solo incidencias cerradas"),
     ]
+    if len(hotels) > 1:
+        vals.insert(1, ("Hotel con mas incidencias", top_hotel, "Mayor volumen registrado"))
+    return vals
 
 
 def dashboard_chart_figures(dff, dff_sla):
@@ -1488,8 +1496,10 @@ def dashboard_pdf_bytes(dff, dff_sla, report_filters):
     story.extend([Paragraph("Indicadores principales", section_style), kpi_table, Spacer(1, 8)])
 
     exec_style = ParagraphStyle("ExecText", parent=small_style, fontSize=7.2, leading=9.2, textColor=colors.HexColor("#334155"))
-    exec_data = [[Paragraph(f"<b>{label}</b><br/><font color='#0f172a' size='11'><b>{escape(str(value))}</b></font><br/><font color='#64748b'>{sub}</font>", exec_style) for label, value, sub in dashboard_executive_values(dff)]]
-    exec_table = Table(exec_data, colWidths=[2.5 * inch] * 4, rowHeights=[0.54 * inch])
+    exec_values = dashboard_executive_values(dff)
+    exec_data = [[Paragraph(f"<b>{label}</b><br/><font color='#0f172a' size='11'><b>{escape(str(value))}</b></font><br/><font color='#64748b'>{sub}</font>", exec_style) for label, value, sub in exec_values]]
+    exec_width = 10.0 * inch / max(1, len(exec_values))
+    exec_table = Table(exec_data, colWidths=[exec_width] * len(exec_values), rowHeights=[0.54 * inch])
     exec_table.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), .7, colors.HexColor("#dbe7f5")),
         ("INNERGRID", (0, 0), (-1, -1), .45, colors.HexColor("#e5edf7")),
@@ -2488,7 +2498,13 @@ def executive_summary_cards(df):
     if df.empty:
         return
     top_depto = df["Departamento"].value_counts().idxmax() if "Departamento" in df and not df.empty else "-"
-    top_hotel = df["Hotel"].value_counts().idxmax() if "Hotel" in df and not df.empty else "-"
+    hotels = []
+    if "Hotel" in df.columns:
+        hotels = [
+            h for h in df["Hotel"].astype(str).str.strip().unique().tolist()
+            if h and h.lower() != "nan"
+        ]
+    top_hotel = df["Hotel"].value_counts().idxmax() if len(hotels) > 1 else "-"
     fc = pd.to_datetime(df.get("Fecha Creación", ""), errors="coerce")
     current_month = fc.dt.to_period("M") == pd.Timestamp(date.today()).to_period("M")
     cerradas_mes = df[current_month & df["Estatus"].astype(str).isin(CLOSED_STATUS)].shape[0]
@@ -2498,7 +2514,9 @@ def executive_summary_cards(df):
         if not pd.isna(f1) and not pd.isna(f2): res_days.append(max(0, int((f2 - f1).days)))
     avg_days = sum(res_days) / len(res_days) if res_days else 0
     vals = [("Área con más incidencias", top_depto, "Concentración operativa"), ("Hotel con más incidencias", top_hotel, "Mayor volumen registrado"), ("Cerradas este mes", cerradas_mes, "Productividad mensual"), ("Tiempo prom. resolución", f"{avg_days:.1f} días", "Solo incidencias cerradas")]
-    cols = st.columns(4)
+    if len(hotels) <= 1:
+        vals = [v for v in vals if not str(v[0]).startswith("Hotel ")]
+    cols = st.columns(len(vals))
     for col, (label, value, sub) in zip(cols, vals):
         with col:
             st.markdown(f'''<div class="kpi-card"><div class="kpi-label">{label}</div><div style="font-size:20px;font-weight:900;color:#0f172a;line-height:1.15;">{value}</div><div class="kpi-sub">{sub}</div></div>''', unsafe_allow_html=True)
