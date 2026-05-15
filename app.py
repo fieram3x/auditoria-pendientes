@@ -554,7 +554,49 @@ hr {
     .title h1{font-size:22px;}
     .user-pill{display:none;}
 }
+@media (max-width: 1200px){
+    .title h1{font-size:22px;}
+    .user-pill{display:none;}
+}
+
+.report-card {
+    background: #ffffff !important;
+    border: 1px solid #dbe7f5 !important;
+    border-radius: 16px !important;
+    padding: 0 16px 12px !important;
+    box-shadow: 0 8px 24px rgba(15,23,42,.06) !important;
+}
+
+.table-header {
+    background: #f8fbff !important;
+    border-bottom: 1px solid #dbe7f5 !important;
+    padding: 14px 0 !important;
+    margin-bottom: 4px !important;
+}
+
+.table-row-wrap {
+    border: 0 !important;
+    border-top: 1px solid #e8eef7 !important;
+    border-radius: 0 !important;
+    margin: 0 0 2px !important;
+    padding: 0 !important;
+    height: 1px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.table-row-wrap:hover {
+    transform: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.cell-text,
+.cell-muted {
+    line-height: 1.35 !important;
+}
 </style>
+
 """,
     unsafe_allow_html=True
 )
