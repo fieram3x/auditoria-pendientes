@@ -556,6 +556,14 @@ hr {
     backdrop-filter: blur(10px);
 }
 
+div[data-testid="stElementContainer"]:has(.sticky-head) {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1000 !important;
+    background: rgba(245,248,252,.98) !important;
+    backdrop-filter: blur(10px);
+}
+
 @media (max-width: 1200px){
     .title h1{font-size:22px;}
     .user-pill{display:none;}
@@ -597,8 +605,7 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
     margin: 0 !important;
 }
 
-div:has(.pendientes-sticky-anchor) ~ div[data-testid="stHorizontalBlock"]:has(.section-title),
-div[data-testid="stVerticalBlock"]:has(.pendientes-sticky-anchor) div[data-testid="stHorizontalBlock"]:has(.section-title) {
+div[data-testid="stHorizontalBlock"]:has(.pendientes-title-marker) {
     position: sticky !important;
     top: 88px;
     z-index: 990;
@@ -607,8 +614,7 @@ div[data-testid="stVerticalBlock"]:has(.pendientes-sticky-anchor) div[data-testi
     padding: 12px 0 8px !important;
 }
 
-div:has(.filter-box-pend) + div[data-testid="stHorizontalBlock"],
-div[data-testid="stVerticalBlock"]:has(.pendientes-sticky-anchor) div:has(.filter-box-pend) + div[data-testid="stHorizontalBlock"] {
+div[data-testid="stElementContainer"]:has(.filter-box-pend) + div[data-testid="stHorizontalBlock"] {
     position: sticky !important;
     top: 166px;
     z-index: 989;
@@ -617,8 +623,7 @@ div[data-testid="stVerticalBlock"]:has(.pendientes-sticky-anchor) div:has(.filte
     padding: 10px 0 8px !important;
 }
 
-div:has(.filter-box-pend) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"],
-div[data-testid="stVerticalBlock"]:has(.pendientes-sticky-anchor) div:has(.filter-box-pend) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
+div[data-testid="stElementContainer"]:has(.filter-box-pend) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
     position: sticky !important;
     top: 254px;
     z-index: 988;
@@ -629,8 +634,7 @@ div[data-testid="stVerticalBlock"]:has(.pendientes-sticky-anchor) div:has(.filte
     box-shadow: 0 10px 18px rgba(15,23,42,.045);
 }
 
-div:has(.pendientes-table-anchor) ~ div:has(.table-header),
-div[data-testid="stVerticalBlock"]:has(.pendientes-sticky-anchor) div:has(.pendientes-table-anchor) ~ div:has(.table-header) {
+div[data-testid="stElementContainer"]:has(.pendientes-table-anchor) + div[data-testid="stElementContainer"]:has(.table-header) {
     position: sticky !important;
     top: 326px;
     z-index: 987;
@@ -640,7 +644,8 @@ div[data-testid="stVerticalBlock"]:has(.pendientes-sticky-anchor) div:has(.pendi
 }
 
 .pendientes-sticky-anchor,
-.pendientes-table-anchor {
+.pendientes-table-anchor,
+.pendientes-title-marker {
     height: 0 !important;
     min-height: 0 !important;
     overflow: hidden !important;
@@ -1407,11 +1412,13 @@ def sidebar_nav():
 
 def page_title(title, subtitle="", button_label=None, button_key=None):
     left, right = st.columns([1, .25])
+    marker = '<span class="pendientes-title-marker"></span>' if title == "Pendientes / Incidencias" else ""
 
     with left:
         st.markdown(
             f"""
             <div class="section-title">
+                {marker}
                 <div>
                     <h2>{title}</h2>
                     <p>{subtitle}</p>
