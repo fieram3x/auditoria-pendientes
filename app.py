@@ -559,28 +559,30 @@ hr {
 /* Panel fijo de Pendientes: titulo, filtros y encabezado de la tabla */
 div[data-testid="stHorizontalBlock"]:has(.section-title) {
     position: sticky;
-    top: 108px;
-    z-index: 930;
+    top: 96px;
+    z-index: 990;
     background: linear-gradient(180deg, rgba(245,248,252,.98), rgba(245,248,252,.94));
-    padding: 10px 0 8px;
+    padding: 12px 0 10px;
     margin-bottom: 0 !important;
+    border-bottom: 1px solid rgba(219,231,245,.72);
+    box-shadow: 0 8px 18px rgba(15,23,42,.04);
     backdrop-filter: blur(12px);
 }
 
 div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] {
     position: sticky;
-    top: 186px;
-    z-index: 920;
+    top: 174px;
+    z-index: 980;
     background: rgba(245,248,252,.96);
-    padding: 10px 0 8px;
+    padding: 12px 0 8px;
     margin-bottom: 0 !important;
     backdrop-filter: blur(12px);
 }
 
 div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
     position: sticky;
-    top: 270px;
-    z-index: 910;
+    top: 258px;
+    z-index: 970;
     background: rgba(245,248,252,.96);
     padding: 8px 0 18px;
     margin-bottom: 0 !important;
@@ -591,8 +593,8 @@ div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stH
 
 div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] {
     position: sticky;
-    top: 352px;
-    z-index: 900;
+    top: 338px;
+    z-index: 960;
     background: #f8fbff !important;
     border: 1px solid #dbe7f5 !important;
     border-radius: 12px 12px 0 0 !important;
@@ -603,7 +605,7 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
     .title h1{font-size:22px;}
     .user-pill{display:none;}
     div[data-testid="stHorizontalBlock"]:has(.section-title) {
-        top: 94px;
+        top: 86px;
     }
     div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"],
     div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"],
@@ -1860,6 +1862,7 @@ def render_report_table(data, dff):
                 if st.button("✏️ Editar", key=f"edit_{rid}", use_container_width=True):
                     # Streamlit solo permite un st.dialog abierto por ejecución.
                     # Por eso limpiamos primero la bitácora antes de abrir edición.
+                    st.session_state.pop("show_create", None)
                     st.session_state.pop("show_bitacora_id", None)
                     st.session_state["edit_id"] = rid
                     st.rerun()
@@ -1867,6 +1870,7 @@ def render_report_table(data, dff):
                 if st.button("🧾 Bitácora", key=f"bit_{rid}", use_container_width=True):
                     # Streamlit solo permite un st.dialog abierto por ejecución.
                     # Por eso limpiamos primero edición antes de abrir bitácora.
+                    st.session_state.pop("show_create", None)
                     st.session_state.pop("edit_id", None)
                     st.session_state["show_bitacora_id"] = rid
                     st.rerun()
@@ -1877,8 +1881,12 @@ def render_report_table(data, dff):
 
     # IMPORTANTE: llamar solo un diálogo por ejecución.
     if st.session_state.get("edit_id"):
+        st.session_state.pop("show_create", None)
+        st.session_state.pop("show_bitacora_id", None)
         render_edit_panel(data, estados)
     elif st.session_state.get("show_bitacora_id"):
+        st.session_state.pop("show_create", None)
+        st.session_state.pop("edit_id", None)
         render_bitacora_panel(data)
 
 
