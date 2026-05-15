@@ -1933,6 +1933,22 @@ def options_from_filtered_df_multi(df, column, filters=None):
     return vals
 
 
+def clear_dashboard_filters():
+    """Limpia todos los filtros del Dashboard antes de reconstruir los widgets."""
+    keys = [
+        "dash_hotel_multi",
+        "dash_depto_multi",
+        "dash_tipo_multi",
+        "dash_prioridad_multi",
+        "dash_estatus_multi",
+        "dash_texto_multi",
+        "dash_fecha_desde",
+        "dash_fecha_hasta",
+    ]
+    for key in keys:
+        st.session_state.pop(key, None)
+
+
 def apply_dashboard_multifilters(df):
     """Filtros del Dashboard en modo multifiltro dinámico, incluyendo rango de fecha."""
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
@@ -2059,7 +2075,11 @@ def apply_dashboard_multifilters(df):
 
     with b4:
         active_filters = (
-            sum(1 for vals in selected.values() if vals)
+            sum(
+                len(st.session_state.get(key, []))
+                for key in cols_filter.values()
+                if isinstance(st.session_state.get(key, []), list)
+            )
             + (1 if texto else 0)
             + (1 if fecha_desde else 0)
             + (1 if fecha_hasta else 0)
@@ -2070,10 +2090,12 @@ def apply_dashboard_multifilters(df):
         )
 
     with b5:
-        if st.button("↻ Limpiar", key="dash_clear_multifilters", use_container_width=True):
-            for k in list(cols_filter.values()) + [texto_key, "dash_fecha_desde", "dash_fecha_hasta"]:
-                st.session_state.pop(k, None)
-            st.rerun()
+        st.button(
+            "↻ Limpiar",
+            key="dash_clear_multifilters",
+            use_container_width=True,
+            on_click=clear_dashboard_filters,
+        )
 
     with b6:
         st.download_button(
