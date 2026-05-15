@@ -1742,16 +1742,36 @@ def dashboard_page(data):
         else: st.caption("Sin datos para graficar.")
         st.markdown('</div>', unsafe_allow_html=True)
     with g4:
-        st.markdown('<div class="detail-card"><div class="detail-title">Tendencia mensual</div>', unsafe_allow_html=True)
+        st.markdown('<div class="detail-card"><div class="detail-title">Incidencias por estatus</div>', unsafe_allow_html=True)
         if not dff.empty:
-            temp = dff.copy(); temp["Mes"] = pd.to_datetime(temp["Fecha Creación"], errors="coerce").dt.to_period("M").astype(str); temp = temp[temp["Mes"] != "NaT"]
-            if not temp.empty:
-                month_df = temp.groupby("Mes").size().reset_index(name="Cantidad")
-                fig = px.line(month_df, x="Mes", y="Cantidad", markers=True)
-                fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
-                st.plotly_chart(fig, use_container_width=True)
-            else: st.caption("Sin fechas válidas para graficar.")
-        else: st.caption("Sin datos para graficar.")
+            status_df = dff.groupby("Estatus").size().reset_index(name="Cantidad")
+
+            fig = px.pie(
+                status_df,
+                names="Estatus",
+                values="Cantidad",
+                hole=.45
+            )
+
+            fig.update_traces(
+                textinfo="percent",
+                textposition="inside",
+                insidetextorientation="horizontal",
+                textfont_size=18
+            )
+
+            fig.update_layout(
+                margin=dict(l=10, r=10, t=10, b=10),
+                height=310,
+                paper_bgcolor="white",
+                showlegend=False
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+        else:
+            st.caption("Sin datos para graficar.")
+
         st.markdown('</div>', unsafe_allow_html=True)
 
 
