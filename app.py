@@ -556,14 +556,6 @@ hr {
     backdrop-filter: blur(10px);
 }
 
-div[data-testid="stElementContainer"]:has(.sticky-head) {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 1000 !important;
-    background: rgba(245,248,252,.98) !important;
-    backdrop-filter: blur(10px);
-}
-
 @media (max-width: 1200px){
     .title h1{font-size:22px;}
     .user-pill{display:none;}
@@ -603,52 +595,6 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
     border-bottom: 1px solid #dbe7f5 !important;
     padding: 0 !important;
     margin: 0 !important;
-}
-
-div[data-testid="stHorizontalBlock"]:has(.pendientes-title-marker) {
-    position: sticky !important;
-    top: 88px;
-    z-index: 990;
-    background: rgba(245,248,252,.97) !important;
-    backdrop-filter: blur(10px);
-    padding: 12px 0 8px !important;
-}
-
-div[data-testid="stElementContainer"]:has(.filter-box-pend) + div[data-testid="stHorizontalBlock"] {
-    position: sticky !important;
-    top: 166px;
-    z-index: 989;
-    background: rgba(245,248,252,.97) !important;
-    backdrop-filter: blur(10px);
-    padding: 10px 0 8px !important;
-}
-
-div[data-testid="stElementContainer"]:has(.filter-box-pend) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
-    position: sticky !important;
-    top: 254px;
-    z-index: 988;
-    background: rgba(245,248,252,.97) !important;
-    backdrop-filter: blur(10px);
-    padding: 8px 0 12px !important;
-    border-bottom: 1px solid #dbe7f5;
-    box-shadow: 0 10px 18px rgba(15,23,42,.045);
-}
-
-div[data-testid="stElementContainer"]:has(.pendientes-table-anchor) + div[data-testid="stElementContainer"]:has(.table-header) {
-    position: sticky !important;
-    top: 326px;
-    z-index: 987;
-    background: rgba(245,248,252,.97) !important;
-    backdrop-filter: blur(10px);
-    padding-top: 8px !important;
-}
-
-.pendientes-sticky-anchor,
-.pendientes-table-anchor,
-.pendientes-title-marker {
-    height: 0 !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
 }
 
 /* Texto más alineado */
@@ -1412,13 +1358,11 @@ def sidebar_nav():
 
 def page_title(title, subtitle="", button_label=None, button_key=None):
     left, right = st.columns([1, .25])
-    marker = '<span class="pendientes-title-marker"></span>' if title == "Pendientes / Incidencias" else ""
 
     with left:
         st.markdown(
             f"""
             <div class="section-title">
-                {marker}
                 <div>
                     <h2>{title}</h2>
                     <p>{subtitle}</p>
@@ -1680,8 +1624,7 @@ def apply_dashboard_multifilters(df):
     return dff
 
 def apply_filters(df, key_prefix="f"):
-    filter_class = "filter-box filter-box-pend" if key_prefix == "pend" else "filter-box"
-    st.markdown(f'<div class="{filter_class}">', unsafe_allow_html=True)
+    st.markdown('<div class="filter-box">', unsafe_allow_html=True)
 
     cols_filter = {
         "Hotel": f"{key_prefix}_hotel",
@@ -1803,7 +1746,6 @@ def render_report_table(data, dff):
     )
 
     st.markdown('<div class="report-card">', unsafe_allow_html=True)
-    st.markdown('<div class="pendientes-table-anchor"></div>', unsafe_allow_html=True)
     st.markdown('<div class="table-header">', unsafe_allow_html=True)
 
     h = st.columns([1.05, .85, .72, 1.05, 1.25, .9, 1.05, .95, 1.95, .52])
@@ -2396,7 +2338,6 @@ def render_create_incidence_dialog(data):
         st.rerun()
 
 def pendientes_page(data):
-    st.markdown('<div class="pendientes-sticky-anchor"></div>', unsafe_allow_html=True)
     create_clicked = page_title(
         "Pendientes / Incidencias",
         "Reporte operativo con filtros dinámicos, menú de acciones y bitácora por incidencia.",
