@@ -567,39 +567,56 @@ hr { margin:.6rem 0; border-color:var(--border); }
     }
 }
 
-/* ===== PENDIENTES MODULE OVERRIDES ===== */
+/* ===== GLOBAL OVERRIDES ===== */
 .stApp { background:#f1f5f9 !important; }
-.block-container { padding-top:.4rem !important; }
+.block-container { padding-top:.6rem !important; }
 
+/* ── App Header — full height, never clipped ── */
 .app-shell.sticky-head {
     background:var(--surface) !important;
+    border:0 !important;
     border-bottom:1px solid var(--border) !important;
     border-radius:0 !important;
-    box-shadow:0 1px 3px rgba(15,23,42,.06) !important;
-    padding:12px 24px !important;
+    box-shadow:0 1px 4px rgba(15,23,42,.07) !important;
+    padding:16px 28px !important;
+    margin-bottom:0 !important;
+    min-height:68px !important;
+    overflow:visible !important;
 }
 
+.app-header { align-items:center; gap:1rem; }
+.logo { width:42px !important; height:42px !important; border-radius:10px !important; font-size:22px !important; }
+.title h1 { font-size:20px !important; font-weight:700 !important; }
+.user-pill {
+    font-size:12.5px !important;
+    padding:7px 14px !important;
+    border-radius:var(--radius) !important;
+    background:var(--surface-alt) !important;
+    border:1px solid var(--border) !important;
+    box-shadow:none !important;
+}
+
+/* ── Page title row ── */
 div[data-testid="stHorizontalBlock"]:has(.section-title) {
     background:transparent !important;
     border:0 !important;
     box-shadow:none !important;
-    padding:20px 0 10px !important;
+    padding:22px 0 10px !important;
+    margin-bottom:0 !important;
 }
-
 div[data-testid="stHorizontalBlock"]:has(.section-title) .section-title h2 {
-    font-size:22px !important;
-    font-weight:700 !important;
-    color:var(--text) !important;
+    font-size:22px !important; font-weight:700 !important; color:var(--text) !important;
 }
 
-/* Filter panel */
+/* ── Filter panel — white card ── */
 div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] {
     background:var(--surface) !important;
     border:1px solid var(--border) !important;
     border-radius:var(--radius-lg) var(--radius-lg) 0 0 !important;
     border-bottom:0 !important;
-    padding:16px 16px 4px !important;
+    padding:14px 16px 4px !important;
     box-shadow:var(--shadow-sm) !important;
+    position:relative !important;
 }
 
 div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
@@ -607,10 +624,11 @@ div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stH
     border:1px solid var(--border) !important;
     border-top:0 !important;
     border-radius:0 0 var(--radius-lg) var(--radius-lg) !important;
-    padding:6px 16px 14px !important;
+    padding:4px 16px 14px !important;
     box-shadow:var(--shadow-sm) !important;
 }
 
+/* Inputs */
 div[data-baseweb="select"] > div,
 div[data-testid="stTextInput"] input {
     background:#f8fafc !important;
@@ -619,7 +637,6 @@ div[data-testid="stTextInput"] input {
     min-height:36px !important;
     box-shadow:none !important;
 }
-
 div[data-baseweb="select"] > div:focus-within,
 div[data-testid="stTextInput"] input:focus {
     border-color:var(--primary) !important;
@@ -627,16 +644,16 @@ div[data-testid="stTextInput"] input:focus {
     box-shadow:0 0 0 3px rgba(30,64,175,.10) !important;
 }
 
-/* Table header */
+/* ── Table column header ── */
 div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] {
     background:var(--surface-alt) !important;
     border:1px solid var(--border) !important;
     border-radius:var(--radius-lg) var(--radius-lg) 0 0 !important;
+    border-bottom:2px solid var(--border) !important;
     padding:10px 14px !important;
-    margin-top:24px !important;
+    margin-top:20px !important;
     box-shadow:none !important;
 }
-
 div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] p {
     color:var(--text-secondary) !important;
     font-size:11px !important;
@@ -645,74 +662,77 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
     letter-spacing:.5px !important;
 }
 
-/* Scroll wrapper */
+/* ── Scroll wrapper ── */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel) {
-    background:var(--surface) !important;
-    border:1px solid var(--border) !important;
-    border-top:0 !important;
-    border-radius:0 0 var(--radius-lg) var(--radius-lg) !important;
-    box-shadow:var(--shadow-sm) !important;
-    padding:0 !important;
+    background:transparent !important;
+    border:0 !important;
+    border-radius:0 !important;
+    box-shadow:none !important;
+    padding:8px 0 0 !important;
 }
 
-/* Data rows */
+/* ── DATA ROWS — individual cards like reference image ── */
 div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) + div[data-testid="stHorizontalBlock"] {
     background:var(--surface) !important;
-    border:0 !important;
-    border-bottom:1px solid var(--border) !important;
-    border-radius:0 !important;
-    padding:12px 14px !important;
-    margin:0 !important;
-    box-shadow:none !important;
-    min-height:52px;
-    transition:background .12s !important;
+    border:1px solid var(--border) !important;
+    border-radius:var(--radius-lg) !important;
+    padding:13px 16px !important;
+    margin:0 0 8px 0 !important;
+    box-shadow:0 1px 3px rgba(15,23,42,.05) !important;
+    min-height:58px;
+    transition:box-shadow .15s, border-color .15s !important;
 }
 
 div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) + div[data-testid="stHorizontalBlock"]:hover {
-    background:#f8fafc !important;
+    background:var(--surface) !important;
+    border-color:var(--border-dark) !important;
+    box-shadow:0 3px 10px rgba(15,23,42,.09) !important;
     transform:none !important;
-    box-shadow:none !important;
-    border-color:var(--border) !important;
 }
 
-/* Row accent overdue / warning */
-.table-row-wrap.row-overdue ~ div[data-testid="stHorizontalBlock"]:first-of-type {
+/* Accent border for overdue rows (left stripe) */
+div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap.row-overdue) + div[data-testid="stHorizontalBlock"] {
     border-left:3px solid var(--red) !important;
 }
-.table-row-wrap.row-warning ~ div[data-testid="stHorizontalBlock"]:first-of-type {
+div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap.row-warning) + div[data-testid="stHorizontalBlock"] {
     border-left:3px solid #f97316 !important;
 }
+div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap.row-ok) + div[data-testid="stHorizontalBlock"] {
+    border-left:3px solid var(--green) !important;
+}
 
-.cell-text { color:var(--text) !important; font-size:12.8px !important; font-weight:500 !important; }
-.cell-muted { color:var(--text-secondary) !important; font-size:12px !important; }
+/* ── Cell styles ── */
+.cell-text { color:var(--text) !important; font-size:13px !important; font-weight:500 !important; line-height:1.35 !important; }
+.cell-muted { color:var(--text-secondary) !important; font-size:12px !important; font-weight:400 !important; }
 
+/* ── Badges ── */
 .badge {
     border-radius:4px !important;
-    padding:3px 8px !important;
-    font-size:11px !important;
+    padding:3px 9px !important;
+    font-size:11.5px !important;
     font-weight:600 !important;
     border:0 !important;
     box-shadow:none !important;
 }
 
-div[data-testid="stPopover"] button {
-    border:1px solid var(--border) !important;
-    border-radius:var(--radius) !important;
-    background:var(--surface) !important;
-    box-shadow:var(--shadow-sm) !important;
-}
-
+/* ── Buttons ── */
 .stButton>button { border-radius:var(--radius) !important; }
-
 .stButton>button[kind="primary"] {
     background:var(--primary) !important;
     border-color:var(--primary) !important;
     box-shadow:0 1px 4px rgba(30,64,175,.2) !important;
 }
-
 div[data-testid="stDownloadButton"] button {
     border-radius:var(--radius) !important;
     border:1px solid var(--border) !important;
+    background:var(--surface) !important;
+    box-shadow:var(--shadow-sm) !important;
+}
+
+/* ── Popover ── */
+div[data-testid="stPopover"] button {
+    border:1px solid var(--border) !important;
+    border-radius:var(--radius) !important;
     background:var(--surface) !important;
     box-shadow:var(--shadow-sm) !important;
 }
