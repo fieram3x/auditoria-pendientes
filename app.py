@@ -1,9 +1,11 @@
 import os
 from io import BytesIO
 from datetime import datetime, date, timedelta
+from html import escape
 
 import pandas as pd
 import plotly.express as px
+import plotly.io as pio
 import streamlit as st
 
 import gspread
@@ -824,6 +826,261 @@ def filtered_excel_bytes(df):
     return output.getvalue()
 
 
+def format_report_filter(values):
+    if values is None:
+        return "Todos"
+    if isinstance(values, (list, tuple, set)):
+        clean = [normalize_text(v) for v in values if normalize_text(v)]
+        return ", ".join(clean) if clean else "Todos"
+    value = normalize_text(values)
+    return value if value else "Todos"
+
+
+def format_report_date(value):
+    if not value:
+        return "Todas"
+    try:
+        return pd.to_datetime(value).strftime("%d/%m/%Y")
+    except Exception:
+        return str(value)
+
+
+def dashboard_report_filters(selected, fecha_desde, fecha_hasta, texto):
+    return {
+        "Hotel": format_report_filter(selected.get("Hotel", [])),
+        "Fecha": f"de {format_report_date(fecha_desde)} a {format_report_date(fecha_hasta)}",
+        "Incidencias": format_report_filter(selected.get("Tipo de Incidencia", [])),
+        "Estatus": format_report_filter(selected.get("Estatus", [])),
+        "Departamento": format_report_filter(selected.get("Departamento", [])),
+        "Prioridad": format_report_filter(selected.get("Prioridad", [])),
+        "Buscar": normalize_text(texto) or "Sin busqueda",
+    }
+
+
+def dashboard_kpi_values(df):
+    total = len(df)
+    en_proceso = len(df[df["Estatus"].astype(str).eq("En proceso")]) if not df.empty else 0
+    completadas = len(df[df["Estatus"].astype(str).isin(CLOSED_STATUS)]) if not df.empty else 0
+    abiertas = len(df[~df["Estatus"].astype(str).isin(CLOSED_STATUS)]) if not df.empty else 0
+    vencidas = 0
+    if not df.empty:
+        for _, r in df.iterrows():
+            if sla_info(r)["class"] == "overdue":
+                vencidas += 1
+    return [
+        ("Total", total, "Incidencias registradas"),
+        ("Abiertas", abiertas, f"{(abiertas / total * 100 if total else 0):.1f}% del total"),
+        ("En proceso", en_proceso, f"{(en_proceso / total * 100 if total else 0):.1f}% del total"),
+        ("Vencidas", vencidas, f"{(vencidas / total * 100 if total else 0):.1f}% del total"),
+        ("Completadas", completadas, f"{(completadas / total * 100 if total else 0):.1f}% del total"),
+    ]
+
+
+def dashboard_executive_values(df):
+    if df.empty:
+        return [
+            ("Area con mas incidencias", "-", "Concentracion operativa"),
+            ("Hotel con mas incidencias", "-", "Mayor volumen registrado"),
+            ("Cerradas este mes", 0, "Productividad mensual"),
+            ("Tiempo prom. resolucion", "0.0 dias", "Solo incidencias cerradas"),
+        ]
+    top_depto = df["Departamento"].value_counts().idxmax() if "Departamento" in df else "-"
+    top_hotel = df["Hotel"].value_counts().idxmax() if "Hotel" in df else "-"
+    fc = pd.to_datetime(df.get("Fecha CreaciÃ³n", ""), errors="coerce")
+    current_month = fc.dt.to_period("M") == pd.Timestamp(date.today()).to_period("M")
+    cerradas_mes = df[current_month & df["Estatus"].astype(str).isin(CLOSED_STATUS)].shape[0]
+    res_days = []
+    for _, r in df[df["Estatus"].astype(str).isin(CLOSED_STATUS)].iterrows():
+        f1 = parse_any_date(r.get("Fecha CreaciÃ³n", ""))
+        f2 = parse_any_date(r.get("Fecha Cierre", ""))
+        if not pd.isna(f1) and not pd.isna(f2):
+            res_days.append(max(0, int((f2 - f1).days)))
+    avg_days = sum(res_days) / len(res_days) if res_days else 0
+    return [
+        ("Area con mas incidencias", top_depto, "Concentracion operativa"),
+        ("Hotel con mas incidencias", top_hotel, "Mayor volumen registrado"),
+        ("Cerradas este mes", cerradas_mes, "Productividad mensual"),
+        ("Tiempo prom. resolucion", f"{avg_days:.1f} dias", "Solo incidencias cerradas"),
+    ]
+
+
+def dashboard_chart_figures(dff, dff_sla):
+    figures = []
+    if not dff.empty:
+        chart_df = dff.groupby("Departamento").size().reset_index(name="Cantidad")
+        fig = px.bar(chart_df, x="Departamento", y="Cantidad", text="Cantidad")
+        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
+        figures.append(("Incidencias por departamento", fig))
+
+        top = dff.groupby("Tipo de Incidencia").size().reset_index(name="Cantidad").sort_values("Cantidad", ascending=False).head(8)
+        fig = px.bar(top, x="Cantidad", y="Tipo de Incidencia", orientation="h", text="Cantidad")
+        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white", plot_bgcolor="white")
+        figures.append(("Tipos de incidencia mas comunes", fig))
+
+    if not dff_sla.empty:
+        sla_chart = sla_dashboard_chart_data(dff_sla)
+        fig = px.pie(sla_chart, names="SLA Dashboard", values="Cantidad", hole=.45)
+        fig.update_traces(textinfo="percent", textfont_size=14)
+        fig.update_layout(legend_title_text="Categoria SLA", margin=dict(l=10, r=10, t=10, b=10), height=310, paper_bgcolor="white")
+        figures.append(("SLA por estado", fig))
+
+    if not dff.empty:
+        status_df = dff.groupby("Estatus").size().reset_index(name="Cantidad")
+        fig = px.pie(status_df, names="Estatus", values="Cantidad", hole=.55)
+        fig.update_traces(textinfo="percent", textposition="inside", textfont_size=16, marker=dict(line=dict(color="white", width=5)))
+        fig.update_layout(height=310, paper_bgcolor="white", plot_bgcolor="white", margin=dict(l=10, r=10, t=10, b=10), legend_title_text="Estatus", showlegend=True)
+        figures.append(("Incidencias por estatus", fig))
+
+    return figures
+
+
+def dashboard_pdf_bytes(dff, dff_sla, report_filters):
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import inch
+        from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except Exception as exc:
+        raise RuntimeError("Instala reportlab para generar el PDF: pip install reportlab") from exc
+
+    output = BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        rightMargin=26,
+        leftMargin=26,
+        topMargin=24,
+        bottomMargin=24,
+        title="Dashboard Auditoria Pendientes",
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("DashboardTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=20, leading=24, textColor=colors.HexColor("#0f172a"), spaceAfter=4)
+    subtitle_style = ParagraphStyle("DashboardSubtitle", parent=styles["Normal"], fontSize=9, leading=12, textColor=colors.HexColor("#64748b"), spaceAfter=10)
+    section_style = ParagraphStyle("SectionTitle", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=12, leading=15, textColor=colors.HexColor("#0f172a"), spaceBefore=8, spaceAfter=6)
+    small_style = ParagraphStyle("Small", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.HexColor("#334155"))
+
+    story = [
+        Paragraph("Dashboard - Auditoria Pendientes", title_style),
+        Paragraph(f"Resumen ejecutivo generado el {datetime.now().strftime('%d/%m/%Y %I:%M %p')}", subtitle_style),
+    ]
+
+    filter_rows = [
+        [Paragraph("<b>Este informe es de</b>", small_style), ""],
+        [Paragraph("<b>Hotel:</b>", small_style), Paragraph(escape(report_filters["Hotel"]), small_style)],
+        [Paragraph("<b>Fecha:</b>", small_style), Paragraph(escape(report_filters["Fecha"]), small_style)],
+        [Paragraph("<b>Incidencias:</b>", small_style), Paragraph(escape(report_filters["Incidencias"]), small_style)],
+        [Paragraph("<b>Estatus:</b>", small_style), Paragraph(escape(report_filters["Estatus"]), small_style)],
+        [Paragraph("<b>Departamento:</b>", small_style), Paragraph(escape(report_filters["Departamento"]), small_style)],
+        [Paragraph("<b>Prioridad:</b>", small_style), Paragraph(escape(report_filters["Prioridad"]), small_style)],
+        [Paragraph("<b>Busqueda:</b>", small_style), Paragraph(escape(report_filters["Buscar"]), small_style)],
+    ]
+    filter_table = Table(filter_rows, colWidths=[1.25 * inch, 8.8 * inch])
+    filter_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eff6ff")),
+        ("SPAN", (0, 0), (-1, 0)),
+        ("BOX", (0, 0), (-1, -1), .7, colors.HexColor("#dbe7f5")),
+        ("INNERGRID", (0, 1), (-1, -1), .25, colors.HexColor("#e5edf7")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.extend([filter_table, Spacer(1, 10)])
+
+    kpi_data = [[Paragraph(f"<b>{label}</b><br/><font color='#0f172a' size='18'><b>{value}</b></font><br/><font color='#64748b'>{sub}</font>", small_style) for label, value, sub in dashboard_kpi_values(dff)]]
+    kpi_table = Table(kpi_data, colWidths=[2.0 * inch] * 5)
+    kpi_table.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), .7, colors.HexColor("#dbe7f5")),
+        ("INNERGRID", (0, 0), (-1, -1), .45, colors.HexColor("#e5edf7")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.extend([Paragraph("Indicadores principales", section_style), kpi_table, Spacer(1, 8)])
+
+    exec_data = [[Paragraph(f"<b>{label}</b><br/><font color='#0f172a' size='11'><b>{escape(str(value))}</b></font><br/><font color='#64748b'>{sub}</font>", small_style) for label, value, sub in dashboard_executive_values(dff)]]
+    exec_table = Table(exec_data, colWidths=[2.5 * inch] * 4)
+    exec_table.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), .7, colors.HexColor("#dbe7f5")),
+        ("INNERGRID", (0, 0), (-1, -1), .45, colors.HexColor("#e5edf7")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fbff")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.extend([Paragraph("Resumen ejecutivo", section_style), exec_table, Spacer(1, 8)])
+
+    figures = dashboard_chart_figures(dff, dff_sla)
+    if figures:
+        story.append(Paragraph("Graficos", section_style))
+        chart_cells = []
+        for title, fig in figures:
+            try:
+                png = pio.to_image(fig, format="png", width=780, height=360, scale=2)
+            except Exception as exc:
+                raise RuntimeError("Instala kaleido para exportar los graficos al PDF: pip install kaleido") from exc
+            chart_cells.append([
+                Paragraph(f"<b>{escape(title)}</b>", small_style),
+                Image(BytesIO(png), width=4.85 * inch, height=2.24 * inch),
+            ])
+        for idx in range(0, len(chart_cells), 2):
+            row = []
+            for cell in chart_cells[idx:idx + 2]:
+                row.append(Table([[cell[0]], [cell[1]]], colWidths=[5.05 * inch]))
+            if len(row) == 1:
+                row.append("")
+            chart_table = Table([row], colWidths=[5.15 * inch, 5.15 * inch])
+            chart_table.setStyle(TableStyle([
+                ("BOX", (0, 0), (-1, -1), .7, colors.HexColor("#dbe7f5")),
+                ("INNERGRID", (0, 0), (-1, -1), .45, colors.HexColor("#e5edf7")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ]))
+            story.extend([chart_table, Spacer(1, 8)])
+
+    story.append(Paragraph("Detalle de incidencias", section_style))
+    cols = ["ID", "Fecha CreaciÃ³n", "Hotel", "Departamento", "Tipo de Incidencia", "Prioridad", "Estatus", "SLA", "Fecha Compromiso", "DescripciÃ³n"]
+    table_df = dff_sla[[c for c in cols if c in dff_sla.columns]].copy()
+    for col in ["Fecha CreaciÃ³n", "Fecha Compromiso"]:
+        if col in table_df.columns:
+            table_df[col] = table_df[col].apply(safe_date)
+    if table_df.empty:
+        story.append(Paragraph("No hay incidencias con los filtros seleccionados.", small_style))
+    else:
+        header = [Paragraph(f"<b>{escape(str(c))}</b>", small_style) for c in table_df.columns]
+        rows = [header]
+        for _, row in table_df.iterrows():
+            rows.append([Paragraph(escape(str(row.get(c, "")))[:900], small_style) for c in table_df.columns])
+        widths = [0.75 * inch, .85 * inch, .9 * inch, 1.0 * inch, 1.35 * inch, .7 * inch, .85 * inch, .8 * inch, .85 * inch, 2.2 * inch][:len(table_df.columns)]
+        detail_table = Table(rows, colWidths=widths, repeatRows=1)
+        detail_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f8fbff")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+            ("BOX", (0, 0), (-1, -1), .7, colors.HexColor("#dbe7f5")),
+            ("INNERGRID", (0, 0), (-1, -1), .25, colors.HexColor("#e5edf7")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(detail_table)
+
+    doc.build(story)
+    return output.getvalue()
+
+
 def close_status_if_needed(data, idx, new_status):
     if new_status in CLOSED_STATUS and not normalize_text(data["Pendientes"].loc[idx, "Fecha Cierre"]):
         data["Pendientes"].loc[idx, "Fecha Cierre"] = datetime.now().strftime("%Y-%m-%d")
@@ -1254,7 +1511,7 @@ def apply_dashboard_multifilters(df):
         )
         selected["Estatus"] = estatus
 
-    b1, b2, b3, b4, b5, b6 = st.columns([1.15, .95, .95, 2.1, 1.05, 1.25])
+    b1, b2, b3, b4, b5, b6, b7 = st.columns([1.15, .95, .95, 1.75, .9, 1.0, 1.0])
 
     with b1:
         texto_key = "dash_texto_multi"
@@ -1302,6 +1559,8 @@ def apply_dashboard_multifilters(df):
         )
         dff = dff[mask]
 
+    report_filters = dashboard_report_filters(selected, fecha_desde, fecha_hasta, texto)
+
     with b4:
         active_filters = (
             sum(1 for vals in selected.values() if vals)
@@ -1328,6 +1587,20 @@ def apply_dashboard_multifilters(df):
             use_container_width=True,
             key="dash_export_multi"
         )
+
+    with b7:
+        try:
+            dff_sla_pdf = add_sla_columns(dff)
+            st.download_button(
+                "PDF",
+                dashboard_pdf_bytes(dff, dff_sla_pdf, report_filters),
+                "dashboard_filtrado.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                key="dash_export_pdf"
+            )
+        except RuntimeError as exc:
+            st.caption(str(exc))
 
     st.markdown('</div>', unsafe_allow_html=True)
     return dff
