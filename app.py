@@ -1935,18 +1935,18 @@ def options_from_filtered_df_multi(df, column, filters=None):
 
 def clear_dashboard_filters():
     """Limpia todos los filtros del Dashboard antes de reconstruir los widgets."""
-    keys = [
+    for key in [
         "dash_hotel_multi",
         "dash_depto_multi",
         "dash_tipo_multi",
         "dash_prioridad_multi",
         "dash_estatus_multi",
-        "dash_texto_multi",
-        "dash_fecha_desde",
-        "dash_fecha_hasta",
-    ]
-    for key in keys:
-        st.session_state.pop(key, None)
+    ]:
+        st.session_state[key] = []
+
+    st.session_state["dash_texto_multi"] = ""
+    st.session_state["dash_fecha_desde"] = None
+    st.session_state["dash_fecha_hasta"] = None
 
 
 def apply_dashboard_multifilters(df):
