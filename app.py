@@ -1750,21 +1750,23 @@ def dashboard_page(data):
                 status_df,
                 names="Estatus",
                 values="Cantidad",
-                hole=.45
+                hole=.55
             )
 
             fig.update_traces(
-                textinfo="percent",
-                textposition="inside",
-                insidetextorientation="horizontal",
-                textfont_size=18
+                textinfo="none",
+                marker=dict(
+                    line=dict(color="white", width=5)
+                )
             )
 
             fig.update_layout(
-                margin=dict(l=10, r=10, t=10, b=10),
                 height=310,
                 paper_bgcolor="white",
-                showlegend=False
+                plot_bgcolor="white",
+                margin=dict(l=10, r=10, t=10, b=10),
+                legend_title_text="Estatus",
+                showlegend=True
             )
 
             st.plotly_chart(fig, use_container_width=True)
