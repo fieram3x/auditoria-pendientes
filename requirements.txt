@@ -5,4 +5,4 @@ openpyxl
 gspread
 google-auth
 reportlab
-kaleido
+kaleido==0.2.1
