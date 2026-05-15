@@ -544,7 +544,13 @@ hr {
     backdrop-filter: blur(10px);
 }
 
-/* Panel fijo de Pendientes: titulo, filtros y encabezado de la tabla */
+/* Panel fijo de Pendientes: cabecera, filtros y encabezado de tabla */
+.app-shell.sticky-head {
+    border-radius: 20px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+}
+
 div[data-testid="stHorizontalBlock"]:has(.section-title) {
     position: sticky;
     top: 82px;
@@ -557,6 +563,10 @@ div[data-testid="stHorizontalBlock"]:has(.section-title) {
     backdrop-filter: blur(12px);
 }
 
+div[data-testid="stHorizontalBlock"]:has(.section-title) .section-title h2 {
+    font-size: 24px;
+}
+
 div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] {
     position: sticky;
     top: 138px;
@@ -565,6 +575,10 @@ div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stH
     padding: 12px 0 8px;
     margin-bottom: 0 !important;
     backdrop-filter: blur(12px);
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] > div {
+    padding: 0 4px;
 }
 
 div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
@@ -589,6 +603,33 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
     box-shadow: 0 10px 18px rgba(15,23,42,.045);
 }
 
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel),
+div[data-testid="stVerticalBlock"]:has(> div .incidents-scroll-panel) {
+    background: rgba(255,255,255,.82);
+    border: 1px solid #dbe7f5;
+    border-top: 0;
+    border-radius: 0 0 16px 16px;
+    box-shadow: 0 18px 34px rgba(15,23,42,.07);
+    padding: 0 10px 10px;
+    scrollbar-width: thin;
+    scrollbar-color: #b7c8df transparent;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel)::-webkit-scrollbar,
+div[data-testid="stVerticalBlock"]:has(> div .incidents-scroll-panel)::-webkit-scrollbar {
+    width: 9px;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel)::-webkit-scrollbar-thumb,
+div[data-testid="stVerticalBlock"]:has(> div .incidents-scroll-panel)::-webkit-scrollbar-thumb {
+    background: #b7c8df;
+    border-radius: 999px;
+}
+
+.incidents-scroll-panel {
+    display: none;
+}
+
 @media (max-width: 1200px){
     .title h1{font-size:22px;}
     .user-pill{display:none;}
@@ -599,6 +640,11 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
     div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"],
     div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] {
         position: static;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel),
+    div[data-testid="stVerticalBlock"]:has(> div .incidents-scroll-panel) {
+        max-height: none;
+        overflow: visible;
     }
 }
 /* Oculta el marcador vacío que antes parecía una fila */
@@ -1805,6 +1851,9 @@ def render_report_table(data, dff):
         st.markdown('</div>', unsafe_allow_html=True)
         return
 
+    rows_container = st.container(height=460, border=False)
+    rows_container.markdown('<div class="incidents-scroll-panel"></div>', unsafe_allow_html=True)
+
     for _, row in dff.reset_index().iterrows():
         rid = str(row["ID"])
         desc = str(row["Descripción"])
@@ -1823,8 +1872,8 @@ def render_report_table(data, dff):
         row_classes = f"table-row-wrap row-{sla['class']}"
         if normalize_text(row["Prioridad"]) in ["Crítica", "Critica"]:
             row_classes += " row-critical"
-        st.markdown(f'<div class="{row_classes}">', unsafe_allow_html=True)
-        c = st.columns([1.05, .85, .72, 1.05, 1.25, .9, 1.05, .95, 1.95, .52])
+        rows_container.markdown(f'<div class="{row_classes}">', unsafe_allow_html=True)
+        c = rows_container.columns([1.05, .85, .72, 1.05, 1.25, .9, 1.05, .95, 1.95, .52])
 
         with c[0]:
             st.markdown(f'<div class="cell-text"><b>{rid}</b></div>', unsafe_allow_html=True)
@@ -1864,7 +1913,7 @@ def render_report_table(data, dff):
                     st.session_state["show_bitacora_id"] = rid
                     st.rerun()
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        rows_container.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
