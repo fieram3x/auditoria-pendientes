@@ -1800,7 +1800,17 @@ def render_create_incidence_dialog(data):
         )
 
     with c3:
-        fecha_comp_auto = suggested_due_date(prioridad, datetime.now().strftime("%Y-%m-%d")) if prioridad else None
+        # Fecha compromiso automática según la prioridad seleccionada.
+        # Se actualiza visualmente en el campo cada vez que cambia la prioridad.
+        fecha_base = datetime.now().strftime("%Y-%m-%d")
+        prioridad_para_fecha = prioridad if normalize_text(prioridad) else "Media"
+        fecha_comp_auto = suggested_due_date(prioridad_para_fecha, fecha_base)
+
+        prioridad_actual = normalize_text(prioridad)
+        if st.session_state.get("new_prioridad_fecha_ref") != prioridad_actual:
+            st.session_state["new_fecha_modal"] = fecha_comp_auto
+            st.session_state["new_prioridad_fecha_ref"] = prioridad_actual
+
         fecha_comp = st.date_input(
             "Fecha compromiso",
             value=fecha_comp_auto,
@@ -1808,11 +1818,8 @@ def render_create_incidence_dialog(data):
             key="new_fecha_modal"
         )
 
-        if prioridad:
-            dias_sla = SLA_DAYS_BY_PRIORITY.get(normalize_text(prioridad), 3)
-            st.caption(f"Se calcula automáticamente: {prioridad} = {dias_sla} día(s).")
-        else:
-            st.caption("Seleccione la prioridad para calcular la fecha compromiso.")
+        dias_sla = SLA_DAYS_BY_PRIORITY.get(normalize_text(prioridad_para_fecha), 3)
+        st.caption(f"Se calcula automáticamente: {prioridad_para_fecha} = {dias_sla} día(s).")
 
         descripcion = st.text_area(
             "Descripción",
@@ -1889,7 +1896,7 @@ def render_create_incidence_dialog(data):
             for k in [
                 "show_create", "new_hotel_modal", "new_depto_modal", "new_prioridad_modal",
                 "new_tipo_modal", "new_impacto_modal", "new_estatus_modal",
-                "new_fecha_modal", "new_descripcion_modal"
+                "new_fecha_modal", "new_descripcion_modal", "new_prioridad_fecha_ref"
             ]:
                 st.session_state.pop(k, None)
 
