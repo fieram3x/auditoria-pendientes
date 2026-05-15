@@ -1027,11 +1027,12 @@ def dashboard_pdf_bytes(dff, dff_sla, report_filters):
         for title, fig in figures:
             try:
                 png = pio.to_image(fig, format="png", width=780, height=360, scale=2)
+                chart_body = Image(BytesIO(png), width=4.85 * inch, height=2.24 * inch)
             except Exception as exc:
-                raise RuntimeError("Instala kaleido para exportar los graficos al PDF: pip install kaleido") from exc
+                chart_body = Paragraph("Grafico no disponible como imagen. Revisa que kaleido este instalado para verlo igual que en la web.", small_style)
             chart_cells.append([
                 Paragraph(f"<b>{escape(title)}</b>", small_style),
-                Image(BytesIO(png), width=4.85 * inch, height=2.24 * inch),
+                chart_body,
             ])
         for idx in range(0, len(chart_cells), 2):
             row = []
