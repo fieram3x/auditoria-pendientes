@@ -596,6 +596,64 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
 .cell-muted {
     line-height: 1.35 !important;
 }
+.report-card {
+    background: #ffffff !important;
+    border: 1px solid #d7e2f0 !important;
+    border-radius: 14px !important;
+    padding: 0 16px 12px !important;
+    box-shadow: 0 10px 28px rgba(15,23,42,.08) !important;
+    overflow: hidden !important;
+}
+
+.table-header {
+    background: #ffffff !important;
+    border-bottom: 2px solid #cbd8e8 !important;
+    padding: 12px 0 !important;
+    margin: 0 !important;
+    box-shadow: 0 2px 8px rgba(15,23,42,.045) !important;
+}
+
+.table-row-wrap {
+    border: 0 !important;
+    border-top: 1px solid #dce6f2 !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: 1px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.table-row-wrap:hover {
+    transform: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+div[data-testid="stHorizontalBlock"]:has(.cell-text),
+div[data-testid="stHorizontalBlock"]:has(.cell-muted) {
+    background: #f8fbff !important;
+    padding: 11px 8px !important;
+}
+
+div[data-testid="stHorizontalBlock"]:has(.cell-text):hover,
+div[data-testid="stHorizontalBlock"]:has(.cell-muted):hover {
+    background: #eef6ff !important;
+}
+
+.cell-text {
+    font-size: 12.5px !important;
+    color: #0f172a !important;
+    font-weight: 550 !important;
+    line-height: 1.35 !important;
+}
+
+.cell-muted {
+    font-size: 12px !important;
+    color: #64748b !important;
+    line-height: 1.35 !important;
+}
+
 </style>
 
 """,
