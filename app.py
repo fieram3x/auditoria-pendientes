@@ -556,9 +556,60 @@ hr {
     backdrop-filter: blur(10px);
 }
 
+/* Panel fijo de Pendientes: titulo, filtros y encabezado de la tabla */
+div[data-testid="stHorizontalBlock"]:has(.section-title) {
+    position: sticky;
+    top: 108px;
+    z-index: 930;
+    background: linear-gradient(180deg, rgba(245,248,252,.98), rgba(245,248,252,.94));
+    padding: 10px 0 8px;
+    margin-bottom: 0 !important;
+    backdrop-filter: blur(12px);
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] {
+    position: sticky;
+    top: 186px;
+    z-index: 920;
+    background: rgba(245,248,252,.96);
+    padding: 10px 0 8px;
+    margin-bottom: 0 !important;
+    backdrop-filter: blur(12px);
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
+    position: sticky;
+    top: 270px;
+    z-index: 910;
+    background: rgba(245,248,252,.96);
+    padding: 8px 0 18px;
+    margin-bottom: 0 !important;
+    border-bottom: 1px solid #dbe7f5;
+    box-shadow: 0 12px 18px rgba(15,23,42,.05);
+    backdrop-filter: blur(12px);
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] {
+    position: sticky;
+    top: 352px;
+    z-index: 900;
+    background: #f8fbff !important;
+    border: 1px solid #dbe7f5 !important;
+    border-radius: 12px 12px 0 0 !important;
+    box-shadow: 0 10px 18px rgba(15,23,42,.045);
+}
+
 @media (max-width: 1200px){
     .title h1{font-size:22px;}
     .user-pill{display:none;}
+    div[data-testid="stHorizontalBlock"]:has(.section-title) {
+        top: 94px;
+    }
+    div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"],
+    div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"],
+    div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] {
+        position: static;
+    }
 }
 /* Oculta el marcador vacío que antes parecía una fila */
 div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) {
