@@ -689,6 +689,197 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
     line-height: 1.35 !important;
 }
 
+/* Pulido final del modulo Pendientes */
+.app-shell.sticky-head {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,.96), rgba(248,251,255,.9)),
+        radial-gradient(circle at 4% 50%, rgba(37,99,235,.14), transparent 28%);
+    border: 1px solid rgba(198,213,233,.9);
+    box-shadow:
+        0 18px 42px rgba(15,23,42,.08),
+        inset 0 1px 0 rgba(255,255,255,.92);
+}
+
+.logo {
+    border-radius: 13px;
+    background:
+        linear-gradient(145deg, rgba(96,165,250,.96), rgba(37,99,235,1));
+    box-shadow:
+        0 14px 26px rgba(37,99,235,.25),
+        inset 0 1px 0 rgba(255,255,255,.32);
+}
+
+.title h1 {
+    font-size: 27px;
+    letter-spacing: 0;
+}
+
+.user-pill {
+    background: rgba(255,255,255,.88);
+    border-color: #dbe7f5;
+    box-shadow:
+        0 10px 22px rgba(15,23,42,.055),
+        inset 0 1px 0 rgba(255,255,255,.9);
+}
+
+div[data-testid="stHorizontalBlock"]:has(.section-title),
+div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"],
+div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.97), rgba(247,250,255,.95));
+}
+
+div[data-testid="stHorizontalBlock"]:has(.section-title) {
+    border: 1px solid #dbe7f5;
+    border-bottom: 0;
+    border-radius: 18px 18px 0 0;
+    padding: 18px 12px 16px;
+    box-shadow:
+        0 18px 42px rgba(15,23,42,.075),
+        inset 0 1px 0 rgba(255,255,255,.95);
+}
+
+div[data-testid="stHorizontalBlock"]:has(.section-title) .section-title {
+    margin: 0;
+}
+
+div[data-testid="stHorizontalBlock"]:has(.section-title) .section-title h2 {
+    font-size: 24px;
+    letter-spacing: 0;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] {
+    border-left: 1px solid #dbe7f5;
+    border-right: 1px solid #dbe7f5;
+    padding: 14px 12px 10px;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] label,
+div[data-testid="stTextInput"] label,
+div[data-testid="stSelectbox"] label {
+    color: #334155 !important;
+    font-size: 12px !important;
+    font-weight: 750 !important;
+}
+
+div[data-baseweb="select"] > div,
+div[data-testid="stTextInput"] input {
+    background: #f8fafc !important;
+    border: 1px solid #e2eaf5 !important;
+    border-radius: 11px !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.85);
+}
+
+div[data-baseweb="select"] > div:hover,
+div[data-testid="stTextInput"] input:hover {
+    border-color: #bdd0ea !important;
+    background: #ffffff !important;
+}
+
+div[data-baseweb="select"] > div:focus-within,
+div[data-testid="stTextInput"] input:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37,99,235,.12) !important;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
+    border-left: 1px solid #dbe7f5;
+    border-right: 1px solid #dbe7f5;
+    border-bottom: 0;
+    padding: 8px 12px 18px;
+    box-shadow: none;
+}
+
+.stButton>button,
+div[data-testid="stDownloadButton"] button {
+    border-radius: 11px !important;
+    border-color: #cfdced !important;
+    background: linear-gradient(180deg,#ffffff,#f8fafc) !important;
+    box-shadow:
+        0 7px 14px rgba(15,23,42,.045),
+        inset 0 1px 0 rgba(255,255,255,.9);
+}
+
+.stButton>button[kind="primary"] {
+    border-color: #2563eb !important;
+    background: linear-gradient(135deg,#2563eb,#1d4ed8) !important;
+    box-shadow:
+        0 12px 24px rgba(37,99,235,.22),
+        inset 0 1px 0 rgba(255,255,255,.22);
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] {
+    background: linear-gradient(180deg,#f8fbff,#eef5ff) !important;
+    border: 1px solid #dbe7f5 !important;
+    border-radius: 0 !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.84);
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] p {
+    color: #334155 !important;
+    font-size: 12px !important;
+    font-weight: 850 !important;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.incidents-scroll-panel) {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.94), rgba(248,251,255,.88));
+    border: 1px solid #dbe7f5;
+    border-top: 0;
+    border-radius: 0 0 18px 18px;
+    box-shadow:
+        0 22px 48px rgba(15,23,42,.1),
+        inset 0 1px 0 rgba(255,255,255,.84);
+    padding: 8px 12px 14px;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) + div[data-testid="stHorizontalBlock"] {
+    background: rgba(255,255,255,.94) !important;
+    border: 1px solid #e4ecf7 !important;
+    border-radius: 14px !important;
+    padding: 14px 12px !important;
+    margin: 9px 2px 0 !important;
+    box-shadow:
+        0 8px 18px rgba(15,23,42,.035),
+        inset 0 1px 0 rgba(255,255,255,.88);
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+
+div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) + div[data-testid="stHorizontalBlock"]:hover {
+    transform: translateY(-1px);
+    border-color: #c8d9ef !important;
+    box-shadow:
+        0 14px 26px rgba(15,23,42,.075),
+        inset 0 1px 0 rgba(255,255,255,.9);
+}
+
+.cell-text {
+    color: #0f172a !important;
+    font-size: 12.8px !important;
+    font-weight: 620 !important;
+}
+
+.cell-muted {
+    color: #64748b !important;
+    font-size: 12.2px !important;
+    font-weight: 560 !important;
+}
+
+.badge {
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.72);
+}
+
+div[data-testid="stPopover"] button {
+    border-radius: 12px !important;
+    background: #ffffff !important;
+    box-shadow: 0 8px 16px rgba(15,23,42,.055);
+}
+
 </style>
 
 """,
