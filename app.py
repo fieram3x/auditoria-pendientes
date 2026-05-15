@@ -143,12 +143,6 @@ st.markdown(
     letter-spacing:-.3px;
 }
 
-.title p {
-    font-size:13.5px;
-    margin:4px 0 0;
-    color:#64748b;
-}
-
 .user-pill {
     background:#fff;
     border:1px solid var(--border);
@@ -184,12 +178,6 @@ st.markdown(
     font-weight:900;
     color:#0f172a;
     letter-spacing:-.2px;
-}
-
-.section-title p {
-    margin:4px 0 0;
-    color:#64748b;
-    font-size:13px;
 }
 
 .kpi-card {
@@ -559,7 +547,7 @@ hr {
 /* Panel fijo de Pendientes: titulo, filtros y encabezado de la tabla */
 div[data-testid="stHorizontalBlock"]:has(.section-title) {
     position: sticky;
-    top: 96px;
+    top: 82px;
     z-index: 990;
     background: linear-gradient(180deg, rgba(245,248,252,.98), rgba(245,248,252,.94));
     padding: 12px 0 10px;
@@ -571,7 +559,7 @@ div[data-testid="stHorizontalBlock"]:has(.section-title) {
 
 div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] {
     position: sticky;
-    top: 174px;
+    top: 138px;
     z-index: 980;
     background: rgba(245,248,252,.96);
     padding: 12px 0 8px;
@@ -581,7 +569,7 @@ div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stH
 
 div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
     position: sticky;
-    top: 258px;
+    top: 222px;
     z-index: 970;
     background: rgba(245,248,252,.96);
     padding: 8px 0 18px;
@@ -593,7 +581,7 @@ div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stH
 
 div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] {
     position: sticky;
-    top: 338px;
+    top: 294px;
     z-index: 960;
     background: #f8fbff !important;
     border: 1px solid #dbe7f5 !important;
@@ -605,7 +593,7 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
     .title h1{font-size:22px;}
     .user-pill{display:none;}
     div[data-testid="stHorizontalBlock"]:has(.section-title) {
-        top: 86px;
+        top: 76px;
     }
     div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"],
     div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"],
@@ -614,6 +602,9 @@ div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="s
     }
 }
 /* Oculta el marcador vacío que antes parecía una fila */
+div[data-testid="stVerticalBlock"] > div:has(.filter-box),
+div[data-testid="stVerticalBlock"] > div:has(.report-card),
+div[data-testid="stVerticalBlock"] > div:has(.table-header),
 div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) {
     display: none !important;
 }
@@ -1357,7 +1348,6 @@ def header():
                     <div class="logo">🛡️</div>
                     <div class="title">
                         <h1>{APP_TITLE}</h1>
-                        <p>Monitor operativo de incidencias y pendientes de auditoría</p>
                     </div>
                 </div>
                 <div class="user-pill">👤 {st.session_state.get("name", "Usuario")} · {st.session_state.get("role", "")}</div>
@@ -1418,7 +1408,6 @@ def page_title(title, subtitle="", button_label=None, button_key=None):
             <div class="section-title">
                 <div>
                     <h2>{title}</h2>
-                    <p>{subtitle}</p>
                 </div>
             </div>
             """,
