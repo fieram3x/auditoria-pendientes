@@ -1073,6 +1073,19 @@ div[data-testid="stPopover"] button {
     box-shadow: none !important;
 }
 
+/* Barra superior de Streamlit: ocultar todo excepto el menu de tres puntos */
+.stDeployButton,
+[data-testid="stToolbar"] a,
+[data-testid="stToolbar"] button:not([aria-label*="Menu"]):not([aria-label*="menu"]):not([title*="Menu"]):not([title*="menu"]) {
+    display: none !important;
+}
+
+[data-testid="stToolbar"] {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
 </style>
 
 """,
