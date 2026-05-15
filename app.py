@@ -258,19 +258,22 @@ st.markdown(
 }
 
 .table-row-wrap {
-    border: 1px solid #edf2f7 !important;
-    border-radius: 14px !important;
-    margin: 10px 8px !important;
-    padding: 12px 14px !important;
-    background: #ffffff !important;
-    box-shadow: 0 2px 10px rgba(15,23,42,.04) !important;
+    border: 0 !important;
+    border-top: 1px solid #e8eef7 !important;
+    border-radius: 0 !important;
+    margin: 4px 8px 2px !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    height: 1px !important;
+    background: transparent !important;
+    box-shadow: none !important;
     transition: all .15s ease-in-out !important;
 }
 
 .table-row-wrap:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 22px rgba(15,23,42,.08) !important;
-    background:#f8fbff !important;
+    transform: none;
+    box-shadow: none !important;
+    background: transparent !important;
 }
 
 .cell-text {
