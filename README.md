@@ -1,6 +1,6 @@
-# Auditoria - Versión mejorada
+# Auditoría Pendientes - Versión mejorada
 
-App Streamlit para gestión de pendientes e incidencias usando la misma base de datos en Google Sheets.
+App Streamlit para gestión de pendientes e incidencias de Auditoría usando la misma base de datos en Google Sheets.
 
 ## Mejoras incluidas
 - Dashboard ejecutivo con KPIs adicionales.
