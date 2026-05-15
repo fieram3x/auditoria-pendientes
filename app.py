@@ -554,43 +554,44 @@ hr {
     .title h1{font-size:22px;}
     .user-pill{display:none;}
 }
-@media (max-width: 1200px){
-    .title h1{font-size:22px;}
-    .user-pill{display:none;}
+/* Oculta el marcador vacío que antes parecía una fila */
+div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) {
+    display: none !important;
 }
 
+/* Estilo real para las filas de datos */
+div[data-testid="stVerticalBlock"] > div:has(.table-row-wrap) + div[data-testid="stHorizontalBlock"] {
+    background: #ffffff !important;
+    border-bottom: 1px solid #e6edf7 !important;
+    padding: 13px 8px !important;
+    margin: 0 !important;
+}
+
+/* Primera fila debajo del encabezado */
+div[data-testid="stVerticalBlock"] > div:has(.table-header) + div[data-testid="stHorizontalBlock"] {
+    background: #f8fbff !important;
+    border-bottom: 1px solid #dbe7f5 !important;
+    padding: 13px 8px !important;
+}
+
+/* Contenedor general con apariencia de tabla */
 .report-card {
     background: #ffffff !important;
     border: 1px solid #dbe7f5 !important;
     border-radius: 16px !important;
-    padding: 0 16px 12px !important;
+    padding: 0 14px 10px !important;
     box-shadow: 0 8px 24px rgba(15,23,42,.06) !important;
 }
 
+/* Encabezado limpio */
 .table-header {
     background: #f8fbff !important;
     border-bottom: 1px solid #dbe7f5 !important;
-    padding: 14px 0 !important;
-    margin-bottom: 4px !important;
-}
-
-.table-row-wrap {
-    border: 0 !important;
-    border-top: 1px solid #e8eef7 !important;
-    border-radius: 0 !important;
-    margin: 0 0 2px !important;
     padding: 0 !important;
-    height: 1px !important;
-    background: transparent !important;
-    box-shadow: none !important;
+    margin: 0 !important;
 }
 
-.table-row-wrap:hover {
-    transform: none !important;
-    background: transparent !important;
-    box-shadow: none !important;
-}
-
+/* Texto más alineado */
 .cell-text,
 .cell-muted {
     line-height: 1.35 !important;
