@@ -1,4 +1,4 @@
-# Auditori - Versión mejorada
+# Auditoria - Versión mejorada
 
 App Streamlit para gestión de pendientes e incidencias usando la misma base de datos en Google Sheets.
 

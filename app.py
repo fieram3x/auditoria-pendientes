@@ -12,7 +12,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 
-APP_TITLE = "Auditori"
+APP_TITLE = "Auditoria"
 SPREADSHEET_NAME = "auditoria_pendientes"
 
 SHEETS = ["Pendientes", "Bitacora", "Usuarios", "Catalogos"]
@@ -115,14 +115,17 @@ st.markdown(
 .app-header {
     display:flex;
     align-items:center;
-    justify-content:space-between;
+    justify-content:center;
     gap:1rem;
+    position:relative;
 }
 
 .brand {
     display:flex;
     align-items:center;
     gap:.85rem;
+    justify-content:center;
+    text-align:left;
 }
 
 .logo {
@@ -162,6 +165,8 @@ st.markdown(
     box-shadow:0 1px 4px rgba(15,23,42,.04);
     font-size:13px;
     white-space:nowrap;
+    position:absolute;
+    right:0;
 }
 
 .login-card {
@@ -172,6 +177,10 @@ st.markdown(
     border-radius:18px;
     padding:28px 30px;
     box-shadow:0 22px 48px rgba(15,23,42,.10);
+}
+
+.login-card .brand {
+    justify-content:center;
 }
 
 .section-title {
@@ -998,7 +1007,7 @@ def dashboard_pdf_bytes(dff, dff_sla, report_filters):
         leftMargin=26,
         topMargin=24,
         bottomMargin=24,
-        title="Dashboard Auditori",
+        title="Dashboard Auditoria",
     )
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("DashboardTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=20, leading=24, textColor=colors.HexColor("#0f172a"), spaceAfter=4)
@@ -1007,7 +1016,7 @@ def dashboard_pdf_bytes(dff, dff_sla, report_filters):
     small_style = ParagraphStyle("Small", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.HexColor("#334155"))
 
     story = [
-        Paragraph("Dashboard - Auditori", title_style),
+        Paragraph("Dashboard - Auditoria", title_style),
         Paragraph(f"Resumen ejecutivo generado el {datetime.now().strftime('%d/%m/%Y %I:%M %p')}", subtitle_style),
     ]
 
@@ -1287,7 +1296,7 @@ def login_view(data):
     st.markdown(
         f"""
         <div class="login-card">
-            <div style="display:flex;align-items:center;gap:14px;">
+            <div class="brand" style="display:flex;align-items:center;gap:14px;">
                 <div class="logo">🛡️</div>
                 <div class="title">
                     <h1>{APP_TITLE}</h1>
@@ -1349,7 +1358,7 @@ def header():
 
 
 def sidebar_nav():
-    st.sidebar.markdown("### 🛡️ Auditori")
+    st.sidebar.markdown("### 🛡️ Auditoria")
     st.sidebar.caption("Panel de control")
 
     if "page" not in st.session_state:
