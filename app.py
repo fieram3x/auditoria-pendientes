@@ -1240,12 +1240,71 @@ def save_data(data, sheet_names=None):
         )
 
 
+def sheet_column_letter(col_number):
+    letters = ""
+    while col_number:
+        col_number, remainder = divmod(col_number - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
+def get_or_create_worksheet(spreadsheet, sheet_name):
+    try:
+        return spreadsheet.worksheet(sheet_name)
+    except Exception:
+        return spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=50)
+
+
+def update_sheet_row(sheet_name, df, idx):
+    spreadsheet = conectar_google_sheets()
+    worksheet = get_or_create_worksheet(spreadsheet, sheet_name)
+    clean_df = migrate_columns(df.copy().fillna(""), sheet_name)
+    row_number = int(idx) + 2
+    end_col = sheet_column_letter(len(clean_df.columns))
+    values = [clean_df.loc[idx, clean_df.columns].tolist()]
+    range_name = f"A{row_number}:{end_col}{row_number}"
+    try:
+        worksheet.update(values=values, range_name=range_name)
+    except TypeError:
+        worksheet.update(range_name, values)
+
+
+def append_sheet_rows(sheet_name, rows_df):
+    if rows_df.empty:
+        return
+    spreadsheet = conectar_google_sheets()
+    worksheet = get_or_create_worksheet(spreadsheet, sheet_name)
+    clean_df = migrate_columns(rows_df.copy().fillna(""), sheet_name)
+    worksheet.append_rows(clean_df.values.tolist(), value_input_option="USER_ENTERED")
+
+
+def persist_changes(data, row_updates=None, appended_rows=None, replaced_sheets=None):
+    row_updates = row_updates or []
+    appended_rows = appended_rows or []
+    replaced_sheets = replaced_sheets or []
+
+    try:
+        for sheet_name, idx in row_updates:
+            update_sheet_row(sheet_name, data[sheet_name], idx)
+
+        for sheet_name, rows_df in appended_rows:
+            append_sheet_rows(sheet_name, rows_df)
+
+        if replaced_sheets:
+            save_data(data, replaced_sheets)
+    except Exception:
+        fallback_sheets = set(replaced_sheets)
+        fallback_sheets.update(sheet_name for sheet_name, _ in row_updates)
+        fallback_sheets.update(sheet_name for sheet_name, _ in appended_rows)
+        save_data(data, sorted(fallback_sheets))
+
+
 def clear_cache_and_rerun():
     st.cache_data.clear()
     st.rerun()
 
 
-@st.cache_data(ttl=2)
+@st.cache_data(ttl=60)
 def cached_load():
     return load_data()
 
@@ -1318,11 +1377,10 @@ def dashboard_kpi_values(df):
     en_proceso = len(df[df["Estatus"].astype(str).eq("En proceso")]) if not df.empty else 0
     completadas = len(df[df["Estatus"].astype(str).isin(CLOSED_STATUS)]) if not df.empty else 0
     abiertas = len(df[~df["Estatus"].astype(str).isin(CLOSED_STATUS)]) if not df.empty else 0
-    vencidas = 0
-    if not df.empty:
-        for _, r in df.iterrows():
-            if sla_info(r)["class"] == "overdue":
-                vencidas += 1
+    if "Días SLA" in df.columns:
+        vencidas = pd.to_numeric(df["Días SLA"], errors="coerce").lt(0).sum()
+    else:
+        vencidas = add_sla_columns(df)["Días SLA"].pipe(pd.to_numeric, errors="coerce").lt(0).sum() if not df.empty else 0
     return [
         ("Total", total, "Incidencias registradas"),
         ("Abiertas", abiertas, f"{(abiertas / total * 100 if total else 0):.1f}% del total"),
@@ -1707,6 +1765,7 @@ def register_change(data, pending_id, action, comment, old_state, new_state):
         columns=BITACORA_COLUMNS
     )
     data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
+    return bit
 
 
 # ==========================================================
@@ -1755,7 +1814,7 @@ def login_view(data):
                 if not is_password_hash(row["Password"]):
                     idx = hit.index[0]
                     data["Usuarios"].loc[idx, "Password"] = hash_password(password)
-                    save_data(data, ["Usuarios"])
+                    persist_changes(data, row_updates=[("Usuarios", idx)])
                 st.session_state["logged"] = True
                 st.session_state["user"] = str(row["Usuario"])
                 st.session_state["name"] = str(row["Nombre"])
@@ -2098,19 +2157,35 @@ def apply_dashboard_multifilters(df):
             key="dash_export_multi"
         )
 
+    pdf_signature = (
+        str(report_filters),
+        len(dff),
+        str(dff["Última Actualización"].max()) if "Última Actualización" in dff.columns and not dff.empty else "",
+    )
+
     with b7:
-        try:
-            dff_sla_pdf = add_sla_columns(dff)
+        if st.button("Preparar PDF", use_container_width=True, key="dash_prepare_pdf"):
+            try:
+                dff_sla_pdf = add_sla_columns(dff)
+                st.session_state["dash_pdf_bytes"] = dashboard_pdf_bytes(dff, dff_sla_pdf, report_filters)
+                st.session_state["dash_pdf_signature"] = pdf_signature
+                st.session_state.pop("dash_pdf_error", None)
+            except RuntimeError as exc:
+                st.session_state.pop("dash_pdf_bytes", None)
+                st.session_state.pop("dash_pdf_signature", None)
+                st.session_state["dash_pdf_error"] = str(exc)
+
+        if st.session_state.get("dash_pdf_bytes") and st.session_state.get("dash_pdf_signature") == pdf_signature:
             st.download_button(
-                "PDF",
-                dashboard_pdf_bytes(dff, dff_sla_pdf, report_filters),
+                "Descargar PDF",
+                st.session_state["dash_pdf_bytes"],
                 "dashboard_filtrado.pdf",
                 mime="application/pdf",
                 use_container_width=True,
                 key="dash_export_pdf"
             )
-        except RuntimeError as exc:
-            st.caption(str(exc))
+        elif st.session_state.get("dash_pdf_error"):
+            st.caption(st.session_state["dash_pdf_error"])
 
     st.markdown('</div>', unsafe_allow_html=True)
     return dff
@@ -2255,10 +2330,36 @@ def render_report_table(data, dff):
         st.markdown('</div>', unsafe_allow_html=True)
         return
 
+    page_controls = st.columns([1, 1, 4])
+    with page_controls[0]:
+        page_size = st.selectbox("Filas", [25, 50, 100], index=1, key="pending_page_size")
+
+    total_rows = len(dff)
+    total_pages = max(1, (total_rows + page_size - 1) // page_size)
+    current_page = min(st.session_state.get("pending_page", 1), total_pages)
+    st.session_state["pending_page"] = current_page
+
+    with page_controls[1]:
+        current_page = st.number_input(
+            "Página",
+            min_value=1,
+            max_value=total_pages,
+            value=current_page,
+            step=1,
+            key="pending_page",
+        )
+
+    start = (current_page - 1) * page_size
+    end = start + page_size
+    dff_page = dff.iloc[start:end]
+
+    with page_controls[2]:
+        st.caption(f"Mostrando {start + 1}-{min(end, total_rows)} de {total_rows} incidencias filtradas.")
+
     rows_container = st.container(height=460, border=False)
     rows_container.markdown('<div class="incidents-scroll-panel"></div>', unsafe_allow_html=True)
 
-    for _, row in dff.reset_index().iterrows():
+    for _, row in dff_page.reset_index().iterrows():
         rid = str(row["ID"])
         desc_short = shorten(row["Descripción"], 105)
 
@@ -2407,9 +2508,13 @@ def render_edit_panel(data, estados):
             detalle_cambios = " | ".join(cambios) if cambios else "Sin cambios de campos."
             texto = comentario.strip() if comentario.strip() else "Actualización registrada."
             comentario_final = f"{texto}\nCambios: {detalle_cambios}"
-            register_change(data, edit_id, accion, comentario_final, anterior_estatus, nuevo_estatus)
+            bit = register_change(data, edit_id, accion, comentario_final, anterior_estatus, nuevo_estatus)
 
-            save_data(data, ["Pendientes", "Bitacora"])
+            persist_changes(
+                data,
+                row_updates=[("Pendientes", idx)],
+                appended_rows=[("Bitacora", bit)],
+            )
             st.session_state.pop("edit_id", None)
             st.session_state.pop("show_bitacora_id", None)
             st.success("Incidencia actualizada correctamente.")
@@ -2495,11 +2600,10 @@ def kpi_cards(df):
     en_proceso = len(df[df["Estatus"].astype(str).eq("En proceso")]) if not df.empty else 0
     completadas = len(df[df["Estatus"].astype(str).isin(CLOSED_STATUS)]) if not df.empty else 0
     abiertas = len(df[~df["Estatus"].astype(str).isin(CLOSED_STATUS)]) if not df.empty else 0
-    vencidas = 0
-    if not df.empty:
-        for _, r in df.iterrows():
-            if sla_info(r)["class"] == "overdue":
-                vencidas += 1
+    if "Días SLA" in df.columns:
+        vencidas = pd.to_numeric(df["Días SLA"], errors="coerce").lt(0).sum()
+    else:
+        vencidas = add_sla_columns(df)["Días SLA"].pipe(pd.to_numeric, errors="coerce").lt(0).sum() if not df.empty else 0
     vals = [("Total", total, "Incidencias registradas", "📋"), ("Abiertas", abiertas, f"{(abiertas / total * 100 if total else 0):.1f}% del total", "🕒"), ("En proceso", en_proceso, f"{(en_proceso / total * 100 if total else 0):.1f}% del total", "⏱️"), ("Vencidas", vencidas, f"{(vencidas / total * 100 if total else 0):.1f}% del total", "⚠️"), ("Completadas", completadas, f"{(completadas / total * 100 if total else 0):.1f}% del total", "✅")]
     cols = st.columns(5)
     for col, (label, value, sub, icon) in zip(cols, vals):
@@ -2521,11 +2625,11 @@ def executive_summary_cards(df):
     fc = pd.to_datetime(df.get("Fecha Creación", ""), errors="coerce")
     current_month = fc.dt.to_period("M") == pd.Timestamp(date.today()).to_period("M")
     cerradas_mes = df[current_month & df["Estatus"].astype(str).isin(CLOSED_STATUS)].shape[0]
-    res_days = []
-    for _, r in df[df["Estatus"].astype(str).isin(CLOSED_STATUS)].iterrows():
-        f1 = parse_any_date(r.get("Fecha Creación", "")); f2 = parse_any_date(r.get("Fecha Cierre", ""))
-        if not pd.isna(f1) and not pd.isna(f2): res_days.append(max(0, int((f2 - f1).days)))
-    avg_days = sum(res_days) / len(res_days) if res_days else 0
+    closed = df["Estatus"].astype(str).isin(CLOSED_STATUS)
+    created = pd.to_datetime(df.loc[closed, "Fecha Creación"], errors="coerce")
+    closed_at = pd.to_datetime(df.loc[closed, "Fecha Cierre"], errors="coerce")
+    res_days = (closed_at - created).dt.days.clip(lower=0).dropna()
+    avg_days = res_days.mean() if not res_days.empty else 0
     vals = [("Área con más incidencias", top_depto, "Concentración operativa"), ("Hotel con más incidencias", top_hotel, "Mayor volumen registrado"), ("Cerradas este mes", cerradas_mes, "Productividad mensual"), ("Tiempo prom. resolución", f"{avg_days:.1f} días", "Solo incidencias cerradas")]
     if len(hotels) <= 1:
         vals = [v for v in vals if not str(v[0]).startswith("Hotel ")]
@@ -2542,7 +2646,7 @@ def dashboard_page(data):
     dff = apply_dashboard_multifilters(df)
     dff_sla = add_sla_columns(dff)
 
-    kpi_cards(dff)
+    kpi_cards(dff_sla)
     executive_summary_cards(dff)
     notification_center(dff)
     render_dashboard_simple_table(dff_sla)
@@ -2659,8 +2763,12 @@ def kanban_page(data):
                             data["Pendientes"].loc[idx, "Estatus"] = new_status
                             data["Pendientes"].loc[idx, "Última Actualización"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             close_status_if_needed(data, idx, new_status)
-                            register_change(data, str(r.get("ID")), "Cambio desde Kanban", comment.strip() or "Estatus actualizado desde vista Kanban.", old, new_status)
-                            save_data(data, ["Pendientes", "Bitacora"])
+                            bit = register_change(data, str(r.get("ID")), "Cambio desde Kanban", comment.strip() or "Estatus actualizado desde vista Kanban.", old, new_status)
+                            persist_changes(
+                                data,
+                                row_updates=[("Pendientes", idx)],
+                                appended_rows=[("Bitacora", bit)],
+                            )
                             clear_cache_and_rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -2825,7 +2933,10 @@ def render_create_incidence_dialog(data):
             )
 
             data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
-            save_data(data, ["Pendientes", "Bitacora"])
+            persist_changes(
+                data,
+                appended_rows=[("Pendientes", new_row), ("Bitacora", bit)],
+            )
 
             for k in [
                 "show_create", "new_hotel_modal", "new_depto_modal", "new_prioridad_modal",
@@ -2930,7 +3041,7 @@ def usuarios_page(data):
                         columns=USUARIOS_COLUMNS
                     )
                     data["Usuarios"] = pd.concat([users, nuevo], ignore_index=True)
-                    save_data(data, ["Usuarios"])
+                    persist_changes(data, appended_rows=[("Usuarios", nuevo)])
                     st.success("Usuario creado correctamente.")
                     clear_cache_and_rerun()
 
@@ -2981,7 +3092,7 @@ def usuarios_page(data):
                 else:
                     if st.button("Inactivar", key=f"inact_user_{usuario_actual}"):
                         data["Usuarios"].loc[idx, "Estado"] = "Inactivo"
-                        save_data(data, ["Usuarios"])
+                        persist_changes(data, row_updates=[("Usuarios", idx)])
                         st.success("Usuario inactivado.")
                         clear_cache_and_rerun()
 
@@ -3030,7 +3141,7 @@ def usuarios_page(data):
                         data["Usuarios"].loc[idx, "Password"] = hash_password(nueva_password)
                     data["Usuarios"].loc[idx, "Rol"] = nuevo_rol
                     data["Usuarios"].loc[idx, "Estado"] = nuevo_estado
-                    save_data(data, ["Usuarios"])
+                    persist_changes(data, row_updates=[("Usuarios", idx)])
                     st.session_state.pop("edit_user", None)
                     st.success("Usuario actualizado correctamente.")
                     clear_cache_and_rerun()
@@ -3059,7 +3170,7 @@ def catalogos_page(data):
 
     if st.button("Guardar catálogos", type="primary"):
         data["Catalogos"] = edited.fillna("")
-        save_data(data, ["Catalogos"])
+        persist_changes(data, replaced_sheets=["Catalogos"])
         st.success("Catálogos actualizados.")
         clear_cache_and_rerun()
 

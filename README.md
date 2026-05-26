@@ -9,6 +9,7 @@ App Streamlit para gestión de pendientes e incidencias de Auditoría usando la 
 - Escapado de HTML en datos visibles para evitar que una descripción o catálogo altere la interfaz.
 - IDs de incidencia con fecha/hora y sufijo único para reducir choques entre usuarios.
 - Escritura por hojas afectadas en Google Sheets, evitando reescribir toda la base en cada cambio.
+- Mejoras de rendimiento: cache de lectura ampliado, PDF generado bajo demanda, tabla principal paginada y escrituras puntuales en filas/anexos cuando aplica.
 - SLA automático calculado por prioridad:
   - Crítica: 1 día
   - Alta: 2 días
