@@ -1798,10 +1798,13 @@ def login_view(data):
                 + st.session_state["initial_admin_password"]
                 + ". Cámbiala al entrar."
             )
-        usuario = st.text_input("Usuario", placeholder="Ingrese su usuario")
-        password = st.text_input("Contraseña", type="password", placeholder="Ingrese su contraseña")
+        with st.form("login_form"):
+            usuario = st.text_input("Usuario", placeholder="Ingrese su usuario")
+            password = st.text_input("Contraseña", type="password", placeholder="Ingrese su contraseña")
 
-        if st.button("Entrar", type="primary", use_container_width=True):
+            entrar = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+
+        if entrar:
             users = data["Usuarios"].copy()
             hit = users[
                 (users["Usuario"].astype(str) == usuario)
