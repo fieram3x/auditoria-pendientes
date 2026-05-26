@@ -5,6 +5,10 @@ App Streamlit para gestión de pendientes e incidencias de Auditoría usando la 
 ## Mejoras incluidas
 - Dashboard ejecutivo con KPIs adicionales.
 - Alertas operativas por SLA, vencimiento y prioridad crítica.
+- Contraseñas protegidas con hash PBKDF2 y migración automática de usuarios existentes.
+- Escapado de HTML en datos visibles para evitar que una descripción o catálogo altere la interfaz.
+- IDs de incidencia con fecha/hora y sufijo único para reducir choques entre usuarios.
+- Escritura por hojas afectadas en Google Sheets, evitando reescribir toda la base en cada cambio.
 - SLA automático calculado por prioridad:
   - Crítica: 1 día
   - Alta: 2 días
@@ -18,6 +22,8 @@ App Streamlit para gestión de pendientes e incidencias de Auditoría usando la 
 
 ## Archivos incluidos
 - app.py
+- security.py
+- ui_utils.py
 - requirements.txt
 - runtime.txt
 - .streamlit/config.toml
@@ -25,3 +31,4 @@ App Streamlit para gestión de pendientes e incidencias de Auditoría usando la 
 ## Notas
 La app mantiene Google Sheets como base de datos mediante `st.secrets["google_service_account"]`.
 No se cambió la estructura principal de la base ni se migró a SQL.
+Opcionalmente puedes definir `st.secrets["initial_admin_password"]` para controlar la contraseña inicial del usuario `admin` cuando la base se crea por primera vez.

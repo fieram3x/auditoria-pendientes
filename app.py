@@ -1,7 +1,7 @@
-import os
 from io import BytesIO
 from datetime import datetime, date, timedelta
 from html import escape
+import uuid
 
 import pandas as pd
 import plotly.express as px
@@ -10,6 +10,9 @@ import streamlit as st
 
 import gspread
 from google.oauth2.service_account import Credentials
+
+from security import generate_temporary_password, hash_password, is_password_hash, verify_password
+from ui_utils import badge, html_text, normalize_text, safe_date, shorten
 
 
 APP_TITLE = "Auditoría Pendientes"
@@ -1096,35 +1099,6 @@ div[data-testid="stPopover"] button {
 # ==========================================================
 # UTILIDADES
 # ==========================================================
-def normalize_text(value):
-    if pd.isna(value) or value is None:
-        return ""
-    return str(value).strip()
-
-
-def safe_date(value, with_time=False):
-    if pd.isna(value) or value in [None, ""]:
-        return ""
-    try:
-        fmt = "%d/%m/%Y %I:%M %p" if with_time else "%d/%m/%Y"
-        return pd.to_datetime(value).strftime(fmt)
-    except Exception:
-        return str(value)
-
-
-def slug(value):
-    s = normalize_text(value).lower().replace(" ", "-").replace("/", "-")
-    replacements = {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u"}
-    for a, b in replacements.items():
-        s = s.replace(a, b)
-    return s
-
-
-def badge(text):
-    t = normalize_text(text) or "Sin dato"
-    return f'<span class="badge badge-{slug(t)}">{t}</span>'
-
-
 def empty_df(name):
     if name == "Pendientes":
         return pd.DataFrame(columns=PENDIENTES_COLUMNS)
@@ -1136,8 +1110,13 @@ def empty_df(name):
 
 
 def seed_data():
+    initial_admin_password = st.secrets.get("initial_admin_password", None)
+    if not initial_admin_password:
+        initial_admin_password = generate_temporary_password()
+        st.session_state["initial_admin_password"] = initial_admin_password
+
     usuarios = pd.DataFrame(
-        [["admin", "admin123", "Administrador", "Administrador", "Activo"]],
+        [["admin", hash_password(initial_admin_password), "Administrador", "Administrador", "Activo"]],
         columns=USUARIOS_COLUMNS
     )
 
@@ -1238,10 +1217,11 @@ def load_data():
     return data
 
 
-def save_data(data):
+def save_data(data, sheet_names=None):
     spreadsheet = conectar_google_sheets()
+    target_sheets = sheet_names or SHEETS
 
-    for sheet_name in SHEETS:
+    for sheet_name in target_sheets:
         df = data.get(sheet_name, empty_df(sheet_name)).copy().fillna("")
         df = migrate_columns(df, sheet_name)
 
@@ -1281,18 +1261,7 @@ def get_catalog(data, category, fallback=None):
 
 
 def next_id(df):
-    year = datetime.now().year
-    nums = []
-
-    for x in df.get("ID", []):
-        s = str(x)
-        if s.startswith(f"INC-{year}-"):
-            try:
-                nums.append(int(s.split("-")[-1]))
-            except Exception:
-                pass
-
-    return f"INC-{year}-{(max(nums) + 1 if nums else 1):03d}"
+    return f"INC-{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4].upper()}"
 
 
 def dynamic_options(df, col):
@@ -1724,8 +1693,8 @@ def notification_center(df, max_items=5):
         level = "alert-danger" if info["class"] == "overdue" or is_critical else "alert-warn"
         st.markdown(
             f'''<div class="alert-item {level}">
-                <b>{r.get("ID", "")}</b> · {r.get("Hotel", "")} · {badge(r.get("Prioridad", ""))} · <b>{info["label"]}</b><br>
-                <span style="color:#64748b;">{str(r.get("Descripción", ""))[:120]}</span>
+                <b>{html_text(r.get("ID", ""))}</b> · {html_text(r.get("Hotel", ""))} · {badge(r.get("Prioridad", ""))} · <b>{html_text(info["label"])}</b><br>
+                <span style="color:#64748b;">{html_text(shorten(r.get("Descripción", ""), 120))}</span>
             </div>''',
             unsafe_allow_html=True
         )
@@ -1750,7 +1719,7 @@ def login_view(data):
             <div style="display:flex;align-items:center;gap:14px;">
                 <div class="logo">🛡️</div>
                 <div class="title">
-                    <h1>{APP_TITLE}</h1>
+                    <h1>{html_text(APP_TITLE)}</h1>
                     <p>Control y seguimiento de incidencias</p>
                 </div>
             </div>
@@ -1763,6 +1732,12 @@ def login_view(data):
 
     with c2:
         st.markdown("### Inicio de sesión")
+        if st.session_state.get("initial_admin_password"):
+            st.warning(
+                "Base inicial creada. Usuario: admin | Contraseña temporal: "
+                + st.session_state["initial_admin_password"]
+                + ". Cámbiala al entrar."
+            )
         usuario = st.text_input("Usuario", placeholder="Ingrese su usuario")
         password = st.text_input("Contraseña", type="password", placeholder="Ingrese su contraseña")
 
@@ -1770,18 +1745,22 @@ def login_view(data):
             users = data["Usuarios"].copy()
             hit = users[
                 (users["Usuario"].astype(str) == usuario)
-                & (users["Password"].astype(str) == password)
                 & (users["Estado"].astype(str) == "Activo")
             ]
 
-            if hit.empty:
+            if hit.empty or not verify_password(password, hit.iloc[0]["Password"]):
                 st.error("Usuario o contraseña incorrectos, o usuario inactivo.")
             else:
                 row = hit.iloc[0]
+                if not is_password_hash(row["Password"]):
+                    idx = hit.index[0]
+                    data["Usuarios"].loc[idx, "Password"] = hash_password(password)
+                    save_data(data, ["Usuarios"])
                 st.session_state["logged"] = True
                 st.session_state["user"] = str(row["Usuario"])
                 st.session_state["name"] = str(row["Nombre"])
                 st.session_state["role"] = str(row["Rol"])
+                st.session_state.pop("initial_admin_password", None)
                 st.rerun()
 
 
@@ -1796,10 +1775,10 @@ def header():
                 <div class="brand">
                     <div class="logo">🛡️</div>
                     <div class="title">
-                        <h1>{APP_TITLE}</h1>
+                        <h1>{html_text(APP_TITLE)}</h1>
                     </div>
                 </div>
-                <div class="user-pill">👤 {st.session_state.get("name", "Usuario")} · {st.session_state.get("role", "")}</div>
+                <div class="user-pill">👤 {html_text(st.session_state.get("name", "Usuario"))} · {html_text(st.session_state.get("role", ""))}</div>
             </div>
         </div>
         """,
@@ -1856,7 +1835,7 @@ def page_title(title, subtitle="", button_label=None, button_key=None):
             f"""
             <div class="section-title">
                 <div>
-                    <h2>{title}</h2>
+                    <h2>{html_text(title)}</h2>
                 </div>
             </div>
             """,
@@ -2281,8 +2260,7 @@ def render_report_table(data, dff):
 
     for _, row in dff.reset_index().iterrows():
         rid = str(row["ID"])
-        desc = str(row["Descripción"])
-        desc_short = desc if len(desc) <= 105 else desc[:102] + "..."
+        desc_short = shorten(row["Descripción"], 105)
 
         hotel_short = (
             str(row["Hotel"])
@@ -2301,15 +2279,15 @@ def render_report_table(data, dff):
         c = rows_container.columns([1.05, .85, .72, 1.05, 1.25, .9, 1.05, .95, 1.95, .52])
 
         with c[0]:
-            st.markdown(f'<div class="cell-text"><b>{rid}</b></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="cell-text"><b>{html_text(rid)}</b></div>', unsafe_allow_html=True)
         with c[1]:
-            st.markdown(f'<div class="cell-muted">{safe_date(row["Fecha Creación"])}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="cell-muted">{html_text(safe_date(row["Fecha Creación"]))}</div>', unsafe_allow_html=True)
         with c[2]:
-            st.markdown(f'<div class="cell-text">{hotel_short}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="cell-text">{html_text(hotel_short)}</div>', unsafe_allow_html=True)
         with c[3]:
-            st.markdown(f'<div class="cell-text">{row["Departamento"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="cell-text">{html_text(row["Departamento"])}</div>', unsafe_allow_html=True)
         with c[4]:
-            st.markdown(f'<div class="cell-text">{row["Tipo de Incidencia"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="cell-text">{html_text(row["Tipo de Incidencia"])}</div>', unsafe_allow_html=True)
         with c[5]:
             st.markdown(priority_dot(row["Prioridad"]) + badge(row["Prioridad"]), unsafe_allow_html=True)
         with c[6]:
@@ -2317,7 +2295,7 @@ def render_report_table(data, dff):
         with c[7]:
             st.markdown(badge(sla["label"]), unsafe_allow_html=True)
         with c[8]:
-            st.markdown(f'<div class="cell-text">{desc_short}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="cell-text">{html_text(desc_short)}</div>', unsafe_allow_html=True)
         with c[9]:
             with st.popover("⋮"):
                 st.markdown('<div class="action-menu-note"><b>Acciones</b></div>', unsafe_allow_html=True)
@@ -2431,7 +2409,7 @@ def render_edit_panel(data, estados):
             comentario_final = f"{texto}\nCambios: {detalle_cambios}"
             register_change(data, edit_id, accion, comentario_final, anterior_estatus, nuevo_estatus)
 
-            save_data(data)
+            save_data(data, ["Pendientes", "Bitacora"])
             st.session_state.pop("edit_id", None)
             st.session_state.pop("show_bitacora_id", None)
             st.success("Incidencia actualizada correctamente.")
@@ -2463,12 +2441,12 @@ def render_bitacora_panel(data):
                 f"""
                 <div class="timeline-card">
                     <div style="display:flex;justify-content:space-between;gap:1rem;">
-                        <div style="font-weight:900;color:#0f172a;">{b["Acción"]}</div>
-                        <div style="font-size:12px;color:#64748b;">{safe_date(b["Fecha"], with_time=True)}</div>
+                        <div style="font-weight:900;color:#0f172a;">{html_text(b["Acción"])}</div>
+                        <div style="font-size:12px;color:#64748b;">{html_text(safe_date(b["Fecha"], with_time=True))}</div>
                     </div>
-                    <div style="font-size:13px;color:#475569;margin-top:8px;">{b["Comentario"]}</div>
-                    <div style="font-size:12px;color:#64748b;margin-top:8px;">{b["Estado Anterior"]} → {b["Estado Nuevo"]}</div>
-                    <div style="font-size:12px;color:#94a3b8;margin-top:6px;">Usuario: {b["Usuario"]}</div>
+                    <div style="font-size:13px;color:#475569;margin-top:8px;">{html_text(b["Comentario"])}</div>
+                    <div style="font-size:12px;color:#64748b;margin-top:8px;">{html_text(b["Estado Anterior"])} → {html_text(b["Estado Nuevo"])}</div>
+                    <div style="font-size:12px;color:#94a3b8;margin-top:6px;">Usuario: {html_text(b["Usuario"])}</div>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -2526,7 +2504,7 @@ def kpi_cards(df):
     cols = st.columns(5)
     for col, (label, value, sub, icon) in zip(cols, vals):
         with col:
-            st.markdown(f'''<div class="kpi-card"><div style="display:flex;justify-content:space-between;align-items:center;"><div><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div><div class="kpi-sub">{sub}</div></div><div class="kpi-icon">{icon}</div></div></div>''', unsafe_allow_html=True)
+            st.markdown(f'''<div class="kpi-card"><div style="display:flex;justify-content:space-between;align-items:center;"><div><div class="kpi-label">{html_text(label)}</div><div class="kpi-value">{html_text(value)}</div><div class="kpi-sub">{html_text(sub)}</div></div><div class="kpi-icon">{html_text(icon)}</div></div></div>''', unsafe_allow_html=True)
 
 
 def executive_summary_cards(df):
@@ -2554,7 +2532,7 @@ def executive_summary_cards(df):
     cols = st.columns(len(vals))
     for col, (label, value, sub) in zip(cols, vals):
         with col:
-            st.markdown(f'''<div class="kpi-card"><div class="kpi-label">{label}</div><div style="font-size:20px;font-weight:900;color:#0f172a;line-height:1.15;">{value}</div><div class="kpi-sub">{sub}</div></div>''', unsafe_allow_html=True)
+            st.markdown(f'''<div class="kpi-card"><div class="kpi-label">{html_text(label)}</div><div style="font-size:20px;font-weight:900;color:#0f172a;line-height:1.15;">{html_text(value)}</div><div class="kpi-sub">{html_text(sub)}</div></div>''', unsafe_allow_html=True)
 
 
 def dashboard_page(data):
@@ -2665,12 +2643,12 @@ def kanban_page(data):
     for i, est in enumerate(visible_estados[:4]):
         col_df = dff[dff["Estatus"].astype(str) == est].copy()
         with cols[i]:
-            st.markdown(f'<div class="kanban-column"><div class="kanban-title"><span>{est}</span><span>{len(col_df)}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kanban-column"><div class="kanban-title"><span>{html_text(est)}</span><span>{len(col_df)}</span></div>', unsafe_allow_html=True)
             if col_df.empty: st.caption("Sin incidencias.")
             for _, r in col_df.head(12).iterrows():
                 info = sla_info(r)
                 cls = "overdue" if info["class"] == "overdue" else "warning" if info["class"] == "warning" else ""
-                st.markdown(f'''<div class="kanban-card {cls}"><b>{r.get("ID", "")}</b><br><span style="font-size:12px;color:#64748b;">{r.get("Hotel", "")} · {r.get("Departamento", "")}</span><br>{priority_dot(r.get("Prioridad", ""))}{badge(r.get("Prioridad", ""))} {badge(info["label"])}<div style="font-size:12.5px;color:#334155;margin-top:8px;">{str(r.get("Descripción", ""))[:95]}</div></div>''', unsafe_allow_html=True)
+                st.markdown(f'''<div class="kanban-card {cls}"><b>{html_text(r.get("ID", ""))}</b><br><span style="font-size:12px;color:#64748b;">{html_text(r.get("Hotel", ""))} · {html_text(r.get("Departamento", ""))}</span><br>{priority_dot(r.get("Prioridad", ""))}{badge(r.get("Prioridad", ""))} {badge(info["label"])}<div style="font-size:12.5px;color:#334155;margin-top:8px;">{html_text(shorten(r.get("Descripción", ""), 95))}</div></div>''', unsafe_allow_html=True)
                 with st.popover("Mover / ver"):
                     new_status = st.selectbox("Cambiar estatus", estados, index=estados.index(est) if est in estados else 0, key=f"kanban_status_{r.get('ID')}")
                     comment = st.text_input("Comentario", key=f"kanban_comment_{r.get('ID')}", placeholder="Opcional")
@@ -2682,7 +2660,8 @@ def kanban_page(data):
                             data["Pendientes"].loc[idx, "Última Actualización"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             close_status_if_needed(data, idx, new_status)
                             register_change(data, str(r.get("ID")), "Cambio desde Kanban", comment.strip() or "Estatus actualizado desde vista Kanban.", old, new_status)
-                            save_data(data); clear_cache_and_rerun()
+                            save_data(data, ["Pendientes", "Bitacora"])
+                            clear_cache_and_rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -2846,7 +2825,7 @@ def render_create_incidence_dialog(data):
             )
 
             data["Bitacora"] = pd.concat([data["Bitacora"], bit], ignore_index=True)
-            save_data(data)
+            save_data(data, ["Pendientes", "Bitacora"])
 
             for k in [
                 "show_create", "new_hotel_modal", "new_depto_modal", "new_prioridad_modal",
@@ -2947,11 +2926,11 @@ def usuarios_page(data):
                     st.error("Este usuario ya existe.")
                 else:
                     nuevo = pd.DataFrame(
-                        [[usuario.strip(), password.strip(), nombre.strip(), rol, estado]],
+                        [[usuario.strip(), hash_password(password.strip()), nombre.strip(), rol, estado]],
                         columns=USUARIOS_COLUMNS
                     )
                     data["Usuarios"] = pd.concat([users, nuevo], ignore_index=True)
-                    save_data(data)
+                    save_data(data, ["Usuarios"])
                     st.success("Usuario creado correctamente.")
                     clear_cache_and_rerun()
 
@@ -3002,7 +2981,7 @@ def usuarios_page(data):
                 else:
                     if st.button("Inactivar", key=f"inact_user_{usuario_actual}"):
                         data["Usuarios"].loc[idx, "Estado"] = "Inactivo"
-                        save_data(data)
+                        save_data(data, ["Usuarios"])
                         st.success("Usuario inactivado.")
                         clear_cache_and_rerun()
 
@@ -3028,7 +3007,7 @@ def usuarios_page(data):
                 with c1:
                     nuevo_nombre = st.text_input("Nombre", value=str(row["Nombre"]))
                 with c2:
-                    nueva_password = st.text_input("Contraseña", value=str(row["Password"]), type="password")
+                    nueva_password = st.text_input("Nueva contraseña", value="", type="password", placeholder="Dejar en blanco para mantenerla")
                 with c3:
                     nuevo_rol = st.selectbox(
                         "Rol",
@@ -3047,10 +3026,11 @@ def usuarios_page(data):
 
                 if guardar:
                     data["Usuarios"].loc[idx, "Nombre"] = nuevo_nombre
-                    data["Usuarios"].loc[idx, "Password"] = nueva_password
+                    if normalize_text(nueva_password):
+                        data["Usuarios"].loc[idx, "Password"] = hash_password(nueva_password)
                     data["Usuarios"].loc[idx, "Rol"] = nuevo_rol
                     data["Usuarios"].loc[idx, "Estado"] = nuevo_estado
-                    save_data(data)
+                    save_data(data, ["Usuarios"])
                     st.session_state.pop("edit_user", None)
                     st.success("Usuario actualizado correctamente.")
                     clear_cache_and_rerun()
@@ -3079,7 +3059,7 @@ def catalogos_page(data):
 
     if st.button("Guardar catálogos", type="primary"):
         data["Catalogos"] = edited.fillna("")
-        save_data(data)
+        save_data(data, ["Catalogos"])
         st.success("Catálogos actualizados.")
         clear_cache_and_rerun()
 
