@@ -1109,10 +1109,12 @@ def empty_df(name):
     return pd.DataFrame(columns=CATALOGOS_COLUMNS)
 
 
-def seed_data():
+def seed_data(expose_initial_admin_password=False):
     initial_admin_password = st.secrets.get("initial_admin_password", None)
     if not initial_admin_password:
         initial_admin_password = generate_temporary_password()
+
+    if expose_initial_admin_password:
         st.session_state["initial_admin_password"] = initial_admin_password
 
     usuarios = pd.DataFrame(
@@ -1191,8 +1193,6 @@ def load_data():
     spreadsheet = conectar_google_sheets()
     data = {}
 
-    seed = seed_data()
-
     for sheet_name in SHEETS:
         try:
             worksheet = spreadsheet.worksheet(sheet_name)
@@ -1206,6 +1206,7 @@ def load_data():
                 cols=50
             )
 
+            seed = seed_data(expose_initial_admin_password=sheet_name == "Usuarios")
             df = seed.get(sheet_name, empty_df(sheet_name))
 
             worksheet.update(
