@@ -432,7 +432,8 @@ div[data-testid="stPopover"] button {
     box-shadow:0 1px 5px rgba(15,23,42,.03);
 }
 
-.stButton>button {
+.stButton>button,
+.stFormSubmitButton>button {
     border-radius:10px;
     border:1px solid var(--border-2);
     background:#ffffff;
@@ -441,13 +442,15 @@ div[data-testid="stPopover"] button {
     padding:.38rem .65rem;
 }
 
-.stButton>button:hover {
+.stButton>button:hover,
+.stFormSubmitButton>button:hover {
     border-color:#2563eb;
     color:#2563eb;
     background:#f8fbff;
 }
 
-.stButton>button[kind="primary"] {
+.stButton>button[kind="primary"],
+.stFormSubmitButton>button[kind="primary"] {
     border-color:#2563eb !important;
     background:#2563eb !important;
     color:white !important;
@@ -794,6 +797,7 @@ div[data-testid="stVerticalBlock"] > div:has(.filter-box) + div[data-testid="stH
 }
 
 .stButton>button,
+.stFormSubmitButton>button,
 div[data-testid="stDownloadButton"] button {
     border-radius: 11px !important;
     border-color: #cfdced !important;
@@ -803,7 +807,8 @@ div[data-testid="stDownloadButton"] button {
         inset 0 1px 0 rgba(255,255,255,.9);
 }
 
-.stButton>button[kind="primary"] {
+.stButton>button[kind="primary"],
+.stFormSubmitButton>button[kind="primary"] {
     border-color: #2563eb !important;
     background: linear-gradient(135deg,#2563eb,#1d4ed8) !important;
     box-shadow:
@@ -1000,7 +1005,8 @@ div[data-testid="stDownloadButton"] button {
     min-height: 40px;
 }
 
-.stButton>button[kind="primary"] {
+.stButton>button[kind="primary"],
+.stFormSubmitButton>button[kind="primary"] {
     background: #2563eb !important;
     border-color: #2563eb !important;
     border-radius: 7px !important;
