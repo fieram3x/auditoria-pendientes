@@ -1006,11 +1006,18 @@ div[data-testid="stDownloadButton"] button {
 }
 
 .stButton>button[kind="primary"],
-.stFormSubmitButton>button[kind="primary"] {
+.stFormSubmitButton>button[kind="primary"],
+button[data-testid="stBaseButton-primaryFormSubmit"] {
     background: #2563eb !important;
     border-color: #2563eb !important;
     border-radius: 7px !important;
     box-shadow: none !important;
+    color: #ffffff !important;
+}
+
+div[data-testid="stFormSubmitButton"] button[data-testid="stBaseButton-primaryFormSubmit"] {
+    background: #2563eb !important;
+    border: 1px solid #2563eb !important;
     color: #ffffff !important;
 }
 
