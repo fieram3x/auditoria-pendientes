@@ -43,7 +43,7 @@ def usuarios_page(data):
                     rol,
                     estado,
                     "",
-                    0,
+                    "0",
                     "",
                     "Sí",
                 ]],
@@ -147,7 +147,7 @@ def usuarios_page(data):
         clear_cache_and_rerun()
 
     if desbloquear:
-        data[SHEET_USUARIOS].loc[idx, "Intentos fallidos"] = 0
+        data[SHEET_USUARIOS].loc[idx, "Intentos fallidos"] = "0"
         data[SHEET_USUARIOS].loc[idx, "Bloqueado hasta"] = ""
         bit = audit_event(st.session_state.get("user", ""), "Desbloqueo de usuario", f"Usuario desbloqueado: {edit_user}", success=True)
         data[SHEET_BITACORA] = pd.concat([data[SHEET_BITACORA], bit], ignore_index=True)

@@ -11,12 +11,12 @@ Aplicación Streamlit para gestionar incidencias de auditoría con Google Sheets
 - `components.py`: header, sidebar, filtros globales, KPIs, alertas y línea de tiempo.
 - `sla.py`: cálculo de fecha compromiso, estado SLA, cumplimiento y rangos de vencimiento.
 - `exports.py`: Excel filtrado con formato y PDF ejecutivo.
-- `pages/dashboard.py`: dashboard ejecutivo.
-- `pages/pendientes.py`: creación, edición, comentario, cierre formal, reapertura y detalle de incidencia.
-- `pages/kanban.py`: vista Kanban por estatus.
-- `pages/bitacora.py`: bitácora general filtrable.
-- `pages/usuarios.py`: administración de usuarios, roles y bloqueos.
-- `pages/catalogos.py`: mantenimiento de catálogos.
+- `app_pages/dashboard.py`: dashboard ejecutivo.
+- `app_pages/pendientes.py`: creación, edición, comentario, cierre formal, reapertura y detalle de incidencia.
+- `app_pages/kanban.py`: vista Kanban por estatus.
+- `app_pages/bitacora.py`: bitácora general filtrable.
+- `app_pages/usuarios.py`: administración de usuarios, roles y bloqueos.
+- `app_pages/catalogos.py`: mantenimiento de catálogos.
 - `security.py`: hashing PBKDF2 y verificación de contraseñas.
 - `ui_utils.py`: helpers de texto seguro, fechas, badges y normalización.
 

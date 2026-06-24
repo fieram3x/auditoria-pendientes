@@ -12,12 +12,12 @@ st.set_page_config(
 from auth import can_access_page, change_password_view, login_view
 from components import header, render_global_styles, sidebar_nav
 from database import cached_load
-from pages.bitacora import bitacora_page
-from pages.catalogos import catalogos_page
-from pages.dashboard import dashboard_page
-from pages.kanban import kanban_page
-from pages.pendientes import pendientes_page
-from pages.usuarios import usuarios_page
+from app_pages.bitacora import bitacora_page
+from app_pages.catalogos import catalogos_page
+from app_pages.dashboard import dashboard_page
+from app_pages.kanban import kanban_page
+from app_pages.pendientes import pendientes_page
+from app_pages.usuarios import usuarios_page
 
 
 def main():

@@ -54,7 +54,7 @@ def seed_data(expose_initial_admin_password=False):
             "Administrador",
             "Activo",
             "",
-            0,
+            "0",
             "",
             "Sí",
         ]],
@@ -114,7 +114,7 @@ def migrate_columns(df, sheet_name):
         })
         df.loc[df["Estado"].astype(str).str.strip() == "", "Estado"] = "Activo"
         df.loc[df["Rol"].astype(str).str.strip() == "", "Rol"] = "Auditor"
-        df.loc[df["Intentos fallidos"].astype(str).str.strip() == "", "Intentos fallidos"] = 0
+        df.loc[df["Intentos fallidos"].astype(str).str.strip() == "", "Intentos fallidos"] = "0"
         df["Debe cambiar password"] = df["Debe cambiar password"].apply(
             lambda value: "Sí" if _yes(value) else "No"
         )

@@ -169,7 +169,7 @@ def login_view(data):
         if not verify_password(password, row.get("Password", "")):
             attempts_value = pd.to_numeric(row.get("Intentos fallidos", 0), errors="coerce")
             attempts = (0 if pd.isna(attempts_value) else int(attempts_value)) + 1
-            data[SHEET_USUARIOS].loc[idx, "Intentos fallidos"] = attempts
+            data[SHEET_USUARIOS].loc[idx, "Intentos fallidos"] = str(attempts)
             comment = f"Contraseña incorrecta. Intento {attempts}/{MAX_FAILED_ATTEMPTS}."
             if attempts >= MAX_FAILED_ATTEMPTS:
                 blocked = datetime.now() + timedelta(minutes=LOCK_MINUTES)
@@ -181,7 +181,7 @@ def login_view(data):
             st.error("Usuario o contraseña incorrectos, o usuario inactivo.")
             return
 
-        data[SHEET_USUARIOS].loc[idx, "Intentos fallidos"] = 0
+        data[SHEET_USUARIOS].loc[idx, "Intentos fallidos"] = "0"
         data[SHEET_USUARIOS].loc[idx, "Bloqueado hasta"] = ""
         data[SHEET_USUARIOS].loc[idx, "Último acceso"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if not is_password_hash(row.get("Password", "")):
