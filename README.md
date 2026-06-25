@@ -1,158 +1,116 @@
 # Auditoría Pendientes
 
-Aplicación Streamlit para gestionar incidencias de auditoría con Google Sheets como base de datos. La app fue reorganizada para funcionar como un sistema interno de control de incidencias: responsables, SLA, alertas, trazabilidad, cierre formal y reapertura.
+Aplicación web para gestionar incidencias de auditoría con **Supabase** como base de datos y **Cloudflare Pages** como hosting. Esta versión reemplaza Streamlit por una SPA moderna construida con Vite.
+
+## Stack
+
+- Frontend: Vite + JavaScript
+- Base de datos: Supabase Postgres
+- Auth: Supabase Auth
+- Hosting: Cloudflare Pages
+- Seguridad: RLS activo en tablas públicas
+
+## Estructura
+
+- `index.html`: entrada de la app.
+- `src/main.js`: lógica de autenticación, módulos, CRUD y renderizado.
+- `src/styles.css`: diseño visual corporativo y tablas tipo Excel.
+- `supabase/schema.sql`: tablas, índices, RLS, permisos y catálogos iniciales.
+- `public/_redirects`: regla SPA para Cloudflare Pages.
+- `package.json`: scripts de desarrollo y build.
+
+## Configurar Supabase
+
+1. Crea un proyecto en Supabase.
+2. Abre SQL Editor.
+3. Ejecuta completo el archivo:
+
+```sql
+supabase/schema.sql
+```
+
+4. Crea el primer usuario en Supabase Auth.
+5. Copia su UUID.
+6. Ejecuta el bloque final de bootstrap indicado en `supabase/schema.sql` para convertirlo en `Administrador`.
+
+## Variables de Cloudflare Pages
+
+Configura estas variables en Cloudflare Pages:
+
+```env
+VITE_SUPABASE_URL=https://TU-PROYECTO.supabase.co
+VITE_SUPABASE_ANON_KEY=TU_ANON_KEY
+```
+
+No uses ni expongas `service_role` en el frontend.
+
+## Deploy en Cloudflare Pages
+
+Configuración recomendada:
+
+- Framework preset: `Vite`
+- Build command: `npm run build`
+- Build output directory: `dist`
+
+## Desarrollo local
+
+```bash
+npm install
+npm run dev
+```
+
+Para build:
+
+```bash
+npm run build
+```
 
 ## Módulos
 
-- `app.py`: orquestador principal, login, estilos y navegación.
-- `constants.py`: columnas, roles, estatus, prioridades, SLA y catálogos base.
-- `database.py`: conexión a Google Sheets, migración automática, escrituras puntuales y bitácora.
-- `auth.py`: login, bloqueo por intentos, último acceso, permisos y cambio obligatorio de contraseña.
-- `components.py`: header, sidebar, filtros globales, KPIs, alertas y línea de tiempo.
-- `sla.py`: cálculo de fecha compromiso, estado SLA, cumplimiento y rangos de vencimiento.
-- `exports.py`: Excel filtrado con formato y PDF ejecutivo.
-- `app_pages/dashboard.py`: dashboard ejecutivo.
-- `app_pages/pendientes.py`: creación, edición, comentario, cierre formal, reapertura y detalle de incidencia.
-- `app_pages/kanban.py`: vista Kanban por estatus.
-- `app_pages/bitacora.py`: bitácora general filtrable.
-- `app_pages/usuarios.py`: administración de usuarios, roles y bloqueos.
-- `app_pages/catalogos.py`: mantenimiento de catálogos.
-- `security.py`: hashing PBKDF2 y verificación de contraseñas.
-- `ui_utils.py`: helpers de texto seguro, fechas, badges y normalización.
+- Dashboard ejecutivo con KPIs y gráficos simples.
+- Incidencias con tabla tipo Excel, filtros y exportación CSV.
+- Detalle, comentario, edición, cierre formal y reapertura.
+- Kanban por estatus.
+- Bitácora general.
+- Usuarios/perfiles.
+- Catálogos editables para administradores y supervisores.
 
-## Base de datos
+## Migración desde Google Sheets
 
-La app mantiene la hoja de cálculo `auditoria_pendientes` y usa estas pestañas:
+La tabla principal equivalente es `public.incidents`.
 
-- `Pendientes`
-- `Bitacora`
-- `Usuarios`
-- `Catalogos`
+Mapeo sugerido:
 
-La migración es automática. Si una columna nueva no existe, se agrega al cargar los datos sin borrar información existente.
+- `ID` -> `id`
+- `Fecha Creación` -> `created_at`
+- `Hotel` -> `hotel`
+- `Departamento` -> `department`
+- `Área Responsable` -> `responsible_area`
+- `Tipo de Incidencia` -> `incident_type`
+- `Impacto` -> `impact`
+- `Prioridad` -> `priority`
+- `Estatus` -> `status`
+- `Responsable` -> `responsible`
+- `Fecha Compromiso` -> `due_at`
+- `Fecha Vencimiento Real` -> `actual_due_at`
+- `Descripción` -> `description`
+- `Causa raíz` -> `root_cause`
+- `Acción tomada` -> `action_taken`
+- `Motivo de cierre` -> `close_reason`
+- `Evidencia URL` -> `evidence_url`
+- `Comentario final` -> `final_comment`
+- `Fecha Cierre` -> `closed_at`
+- `Última Actualización` -> `updated_at`
 
-## Columnas principales
-
-`Pendientes` incluye:
-
-- `ID`
-- `Fecha Creación`
-- `Hotel`
-- `Departamento`
-- `Área Responsable`
-- `Tipo de Incidencia`
-- `Impacto`
-- `Prioridad`
-- `Estatus`
-- `Responsable`
-- `Usuario asignado`
-- `Creado por`
-- `Última actualización por`
-- `Fecha asignación`
-- `Fecha Compromiso`
-- `Fecha Vencimiento Real`
-- `Descripción`
-- `Causa raíz`
-- `Acción tomada`
-- `Motivo de cierre`
-- `Evidencia URL`
-- `Comentario final`
-- `Fecha Cierre`
-- `Última Actualización`
-
-`Bitacora` registra:
-
-- Fecha y hora
-- Usuario
-- Acción realizada
-- Campo modificado
-- Valor anterior
-- Valor nuevo
-- Comentario
-- Hotel
-- Estatus
-
-`Usuarios` incluye:
-
-- Usuario, password, nombre, rol y estado
-- Último acceso
-- Intentos fallidos
-- Bloqueo temporal
-- Indicador para forzar cambio de contraseña
-
-## Roles y permisos
-
-- `Administrador`: acceso total.
-- `Supervisor`: dashboard, pendientes, Kanban, bitácora, edición, cierre y reapertura.
-- `Auditor`: dashboard, pendientes, Kanban, bitácora, creación, comentarios y actualización de incidencias asignadas.
-
-## Flujo de incidencias
-
-1. Crear incidencia con hotel, departamento, tipo, impacto, prioridad, responsable, fecha compromiso y descripción.
-2. Asignar o cambiar responsable.
-3. Comentar avances; cada comentario se registra en bitácora.
-4. Cambiar estatus desde Pendientes o Kanban.
-5. Cerrar formalmente con causa raíz, acción tomada y comentario final obligatorios.
-6. Reabrir una incidencia cerrada solo con motivo obligatorio.
-
-## SLA
-
-La fecha compromiso se calcula por prioridad:
-
-- Crítica: 1 día
-- Alta: 2 días
-- Media: 3 días
-- Baja: 5 días
-
-El dashboard clasifica vencimientos por rangos y calcula cumplimiento SLA.
-
-## Dashboard y alertas
-
-El dashboard incluye KPIs ejecutivos, filtros globales y gráficos por hotel, departamento, prioridad, estatus, vencimientos y tendencia mensual.
-
-El centro de alertas muestra:
-
-- Incidencias vencidas
-- Incidencias críticas
-- Incidencias que vencen hoy
-- Incidencias sin responsable
-- Incidencias sin actualización reciente
-
-## Exportaciones
-
-Las exportaciones trabajan sobre lo filtrado:
-
-- Excel con encabezados, filtros, ancho automático y colores por prioridad/estatus.
-- PDF ejecutivo con título, fecha de generación, filtros, KPIs, resumen y tabla resumida.
+La bitácora equivalente es `public.audit_log`.
 
 ## Seguridad
 
-- Contraseñas protegidas con PBKDF2.
-- Migración automática de contraseñas antiguas en texto plano.
-- Bloqueo por intentos fallidos.
-- Auditoría de login exitoso/fallido.
-- Cambio obligatorio de contraseña temporal.
+El SQL activa RLS en:
 
-## Configuración
+- `profiles`
+- `incidents`
+- `audit_log`
+- `catalogs`
 
-La conexión usa:
-
-```toml
-[google_service_account]
-```
-
-en `st.secrets`.
-
-Opcionalmente puedes definir:
-
-```toml
-initial_admin_password = "..."
-```
-
-Si no se define, se genera una contraseña temporal para el primer usuario `admin`.
-
-## Ejecución
-
-```bash
-streamlit run app.py
-```
+El frontend usa la anon key pública y depende de Supabase Auth + RLS para limitar acciones.

@@ -1,0 +1,17 @@
+{
+  "name": "auditoria-pendientes",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.87.0",
+    "vite": "^7.3.0"
+  },
+  "devDependencies": {}
+}
