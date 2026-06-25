@@ -46,6 +46,7 @@ create table if not exists public.audit_log (
   incident_id text references public.incidents(id) on delete set null,
   occurred_at timestamptz not null default now(),
   user_id uuid references auth.users(id),
+  legacy_user text,
   action text not null,
   changed_field text,
   old_value text,

@@ -104,6 +104,19 @@ Mapeo sugerido:
 
 La bitácora equivalente es `public.audit_log`.
 
+Mapeo sugerido:
+
+- `ID Pendiente` -> `incident_id`
+- `Fecha` -> `occurred_at`
+- `Usuario` -> `legacy_user`
+- `Acción` -> `action`
+- `Campo modificado` -> `changed_field`
+- `Valor anterior` -> `old_value`
+- `Valor nuevo` -> `new_value`
+- `Comentario` -> `comment`
+- `Hotel` -> `hotel`
+- `Estatus` -> `status`
+
 ## Seguridad
 
 El SQL activa RLS en:

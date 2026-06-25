@@ -573,7 +573,7 @@ function renderAudit() {
             ${state.audit.map((row) => `
               <tr>
                 <td>${escapeHtml(fmtDate(row.occurred_at, true))}</td>
-                <td>${escapeHtml(profileName(row.user_id))}</td>
+                <td>${escapeHtml(auditUserName(row))}</td>
                 <td>${escapeHtml(row.incident_id || "")}</td>
                 <td>${escapeHtml(row.action || "")}</td>
                 <td>${escapeHtml(row.changed_field || "")}</td>
@@ -629,8 +629,8 @@ function renderCatalogs() {
   `;
 }
 
-function profileName(id) {
-  return state.profiles.find((profile) => profile.id === id)?.display_name || "";
+function auditUserName(row) {
+  return state.profiles.find((profile) => profile.id === row.user_id)?.display_name || row.legacy_user || "";
 }
 
 function bindPageEvents() {
@@ -781,6 +781,7 @@ async function insertAudit(incidentIdValue, action, fieldName, oldValue, newValu
   await supabase.from("audit_log").insert({
     incident_id: incidentIdValue,
     user_id: state.session.user.id,
+    legacy_user: state.profile?.display_name || state.session.user.email || "",
     action,
     changed_field: fieldName,
     old_value: oldValue ?? "",
