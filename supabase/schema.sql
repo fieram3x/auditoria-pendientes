@@ -6,6 +6,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
+  username text,
   display_name text not null default 'Usuario',
   role text not null default 'Auditor' check (role in ('Administrador', 'Supervisor', 'Auditor')),
   status text not null default 'Activo' check (status in ('Activo', 'Inactivo')),
@@ -13,6 +14,12 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.profiles add column if not exists username text;
+
+create unique index if not exists profiles_username_uidx
+  on public.profiles (lower(username))
+  where username is not null;
 
 create table if not exists public.incidents (
   id text primary key,

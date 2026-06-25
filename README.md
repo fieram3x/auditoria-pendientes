@@ -33,6 +33,20 @@ supabase/schema.sql
 5. Copia su UUID.
 6. Ejecuta el bloque final de bootstrap indicado en `supabase/schema.sql` para convertirlo en `Administrador`.
 
+## Usuarios heredados
+
+La app permite iniciar sesión con usuarios heredados como `R-Matos`, `B-Paredes` o `F-Peña`. Supabase Auth requiere emails internamente, por lo que estos usuarios se crean en Auth con aliases privados:
+
+- `R-Matos` -> `r-matos@auditoria.local`
+- `R-Perez` -> `r-perez@auditoria.local`
+- `B-Paredes` -> `b-paredes@auditoria.local`
+- `L-German` -> `l-german@auditoria.local`
+- `F-Peña` -> `f-pena@auditoria.local`
+- `R-Martinez` -> `r-martinez@auditoria.local`
+- `M-Herrera` -> `m-herrera@auditoria.local`
+
+Las contraseñas se configuran directamente en Supabase Auth; no se guardan en el repositorio.
+
 ## Variables de Cloudflare Pages
 
 Configura estas variables en Cloudflare Pages:

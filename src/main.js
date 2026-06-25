@@ -8,6 +8,17 @@ const STATUSES = ["Pendiente", "En proceso", "En espera de respuesta", "Escalado
 const CLOSED = ["Resuelto", "Cerrado"];
 const PRIORITIES = ["Baja", "Media", "Alta", "Crítica"];
 const SLA_DAYS = { "Crítica": 1, Critica: 1, Alta: 2, Media: 3, Baja: 5 };
+const LEGACY_LOGIN_DOMAIN = "auditoria.local";
+const LEGACY_USERS = {
+  "r-matos": { username: "R-Matos", email: `r-matos@${LEGACY_LOGIN_DOMAIN}`, displayName: "Roldany Matos", role: "Administrador", status: "Activo" },
+  "r-perez": { username: "R-Perez", email: `r-perez@${LEGACY_LOGIN_DOMAIN}`, displayName: "Roldany Matos", role: "Auditor", status: "Activo" },
+  "b-paredes": { username: "B-Paredes", email: `b-paredes@${LEGACY_LOGIN_DOMAIN}`, displayName: "Brayan Paredes", role: "Auditor", status: "Activo" },
+  "l-german": { username: "L-German", email: `l-german@${LEGACY_LOGIN_DOMAIN}`, displayName: "Lisbet German", role: "Auditor", status: "Activo" },
+  "f-pena": { username: "F-Peña", email: `f-pena@${LEGACY_LOGIN_DOMAIN}`, displayName: "Franyery Peña", role: "Auditor", status: "Activo" },
+  "r-martinez": { username: "R-Martinez", email: `r-martinez@${LEGACY_LOGIN_DOMAIN}`, displayName: "Rafiel Martinez", role: "Auditor", status: "Activo" },
+  "m-herrera": { username: "M-Herrera", email: `m-herrera@${LEGACY_LOGIN_DOMAIN}`, displayName: "Miguel Herrera", role: "Auditor", status: "Activo" }
+};
+const LEGACY_USERS_BY_EMAIL = Object.fromEntries(Object.values(LEGACY_USERS).map((user) => [user.email.toLowerCase(), user]));
 const CATALOG_DEFAULTS = {
   Hotel: ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"],
   Departamento: ["Recepción", "Reservas", "A&B", "Spa", "Contabilidad", "IT", "Club Meliá", "Auditoría Nocturna", "Auditoría Diurna"],
@@ -52,6 +63,7 @@ const escapeHtml = (value) => String(value ?? "")
   .replaceAll("'", "&#039;");
 
 const normalize = (value) => String(value ?? "").trim();
+const canonicalUser = (value) => normalize(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const slug = (value) => normalize(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "sin-dato";
 const fmtDate = (value, withTime = false) => {
   if (!value) return "";
@@ -72,6 +84,15 @@ const role = () => state.profile?.role || "Auditor";
 const isAdmin = () => role() === "Administrador";
 const isSupervisor = () => role() === "Supervisor";
 const canManage = () => isAdmin() || isSupervisor();
+
+function resolveLoginEmail(value) {
+  const login = normalize(value);
+  if (login.includes("@")) return login;
+  const legacyUser = LEGACY_USERS[canonicalUser(login)];
+  if (legacyUser) return legacyUser.email;
+  const alias = canonicalUser(login).replace(/[^a-z0-9._-]+/g, "");
+  return alias ? `${alias}@${LEGACY_LOGIN_DOMAIN}` : login;
+}
 
 function incidentId() {
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
@@ -190,8 +211,8 @@ function renderLogin(error = "") {
         ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
         <form id="loginForm" class="form-grid">
           <div class="field form-full">
-            <label>Email</label>
-            <input name="email" type="email" required placeholder="usuario@empresa.com" autocomplete="email">
+            <label>Usuario o email</label>
+            <input name="login" type="text" required placeholder="R-Matos" autocomplete="username">
           </div>
           <div class="field form-full">
             <label>Contraseña</label>
@@ -206,7 +227,7 @@ function renderLogin(error = "") {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const { data, error: signError } = await supabase.auth.signInWithPassword({
-      email: normalize(form.get("email")),
+      email: resolveLoginEmail(form.get("login")),
       password: String(form.get("password") || "")
     });
     if (signError) {
@@ -232,12 +253,14 @@ async function ensureProfile() {
     await supabase.from("profiles").update({ last_access_at: nowISO() }).eq("id", user.id);
     return;
   }
+  const legacyUser = LEGACY_USERS_BY_EMAIL[String(user.email || "").toLowerCase()];
   const insert = await supabase.from("profiles").insert({
     id: user.id,
     email: user.email,
-    display_name: user.email?.split("@")[0] || "Usuario",
-    role: "Auditor",
-    status: "Activo",
+    username: legacyUser?.username || user.email?.split("@")[0] || "Usuario",
+    display_name: legacyUser?.displayName || user.email?.split("@")[0] || "Usuario",
+    role: legacyUser?.role === "Administrador" ? "Auditor" : legacyUser?.role || "Auditor",
+    status: legacyUser?.status || "Activo",
     last_access_at: nowISO()
   }).select("*").single();
   if (insert.error) throw insert.error;
@@ -595,10 +618,11 @@ function renderUsers() {
     <div class="excel-wrap">
       <div class="excel-scroller">
         <table class="excel">
-          <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th>Último acceso</th></tr></thead>
+          <thead><tr><th>Usuario</th><th>Nombre</th><th>Email interno</th><th>Rol</th><th>Estado</th><th>Último acceso</th></tr></thead>
           <tbody>
             ${state.profiles.map((row) => `
               <tr>
+                <td>${escapeHtml(row.username || "")}</td>
                 <td>${escapeHtml(row.display_name || "")}</td>
                 <td>${escapeHtml(row.email || "")}</td>
                 <td>${badge(row.role || "Auditor")}</td>
