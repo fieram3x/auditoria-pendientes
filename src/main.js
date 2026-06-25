@@ -12,15 +12,14 @@ const PROFILE_STATUSES = ["Activo", "Inactivo"];
 const SLA_DAYS = { "Crítica": 1, Critica: 1, Alta: 2, Media: 3, Baja: 5 };
 const LEGACY_LOGIN_DOMAIN = "auditoria.local";
 const LEGACY_USERS = {
-  "r-matos": { username: "R-Matos", email: `r-matos@${LEGACY_LOGIN_DOMAIN}`, displayName: "Roldany Matos", role: "Administrador", status: "Activo" },
-  "r-perez": { username: "R-Perez", email: `r-perez@${LEGACY_LOGIN_DOMAIN}`, displayName: "Roldany Matos", role: "Auditor", status: "Activo" },
-  "b-paredes": { username: "B-Paredes", email: `b-paredes@${LEGACY_LOGIN_DOMAIN}`, displayName: "Brayan Paredes", role: "Auditor", status: "Activo" },
-  "l-german": { username: "L-German", email: `l-german@${LEGACY_LOGIN_DOMAIN}`, displayName: "Lisbet German", role: "Auditor", status: "Activo" },
-  "f-pena": { username: "F-Peña", email: `f-pena@${LEGACY_LOGIN_DOMAIN}`, displayName: "Franyery Peña", role: "Auditor", status: "Activo" },
-  "r-martinez": { username: "R-Martinez", email: `r-martinez@${LEGACY_LOGIN_DOMAIN}`, displayName: "Rafiel Martinez", role: "Auditor", status: "Activo" },
-  "m-herrera": { username: "M-Herrera", email: `m-herrera@${LEGACY_LOGIN_DOMAIN}`, displayName: "Miguel Herrera", role: "Auditor", status: "Activo" }
+  "r-matos": { username: "R-Matos", displayName: "Roldany Matos", role: "Administrador", status: "Activo" },
+  "r-perez": { username: "R-Perez", displayName: "Roldany Matos", role: "Auditor", status: "Activo" },
+  "b-paredes": { username: "B-Paredes", displayName: "Brayan Paredes", role: "Auditor", status: "Activo" },
+  "l-german": { username: "L-German", displayName: "Lisbet German", role: "Auditor", status: "Activo" },
+  "f-pena": { username: "F-Peña", displayName: "Franyery Peña", role: "Auditor", status: "Activo" },
+  "r-martinez": { username: "R-Martinez", displayName: "Rafiel Martinez", role: "Auditor", status: "Activo" },
+  "m-herrera": { username: "M-Herrera", displayName: "Miguel Herrera", role: "Auditor", status: "Activo" }
 };
-const LEGACY_USERS_BY_EMAIL = Object.fromEntries(Object.values(LEGACY_USERS).map((user) => [user.email.toLowerCase(), user]));
 const CATALOG_DEFAULTS = {
   Hotel: ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"],
   Departamento: ["Recepción", "Reservas", "A&B", "Spa", "Contabilidad", "IT", "Club Meliá", "Auditoría Nocturna", "Auditoría Diurna"],
@@ -95,10 +94,10 @@ const isSupervisor = () => role() === "Supervisor";
 const canManageUsers = () => isAdmin();
 const canManageCatalogs = () => isAdmin() || isSupervisor();
 
-function resolveLoginEmail(value) {
+function resolveLoginIdentifier(value) {
   const login = normalize(value);
   const legacyUser = LEGACY_USERS[canonicalUser(login)];
-  if (legacyUser) return legacyUser.email;
+  if (legacyUser) return internalAccessAlias(legacyUser.username);
   const alias = canonicalUser(login).replace(/[^a-z0-9._-]+/g, "");
   return alias ? `${alias}@${LEGACY_LOGIN_DOMAIN}` : login;
 }
@@ -106,6 +105,11 @@ function resolveLoginEmail(value) {
 function internalAccessAlias(username) {
   const alias = canonicalUser(username).replace(/[^a-z0-9._-]+/g, "");
   return alias ? `${alias}@${LEGACY_LOGIN_DOMAIN}` : "";
+}
+
+function legacyUserFromAccessIdentifier(value) {
+  const accessIdentifier = normalize(value).toLowerCase();
+  return Object.values(LEGACY_USERS).find((user) => internalAccessAlias(user.username).toLowerCase() === accessIdentifier);
 }
 
 function incidentId() {
@@ -271,7 +275,7 @@ function renderLogin(error = "") {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const { data, error: signError } = await supabase.auth.signInWithPassword({
-      email: resolveLoginEmail(form.get("login")),
+      email: resolveLoginIdentifier(form.get("login")),
       password: String(form.get("password") || "")
     });
     if (signError) {
@@ -305,12 +309,12 @@ async function ensureProfile() {
     await supabase.from("profiles").update({ last_access_at: nowISO() }).eq("id", user.id);
     return;
   }
-  const legacyUser = LEGACY_USERS_BY_EMAIL[String(user.email || "").toLowerCase()];
+  const legacyUser = legacyUserFromAccessIdentifier(user.email);
+  const fallbackUsername = legacyUser?.username || user.email?.split("@")[0] || "Usuario";
   const insert = await supabase.from("profiles").insert({
     id: user.id,
-    email: user.email,
-    username: legacyUser?.username || user.email?.split("@")[0] || "Usuario",
-    display_name: legacyUser?.displayName || user.email?.split("@")[0] || "Usuario",
+    username: fallbackUsername,
+    display_name: legacyUser?.displayName || fallbackUsername,
     role: legacyUser?.role === "Administrador" ? "Auditor" : legacyUser?.role || "Auditor",
     status: legacyUser?.status || "Activo",
     last_access_at: nowISO()
@@ -713,7 +717,7 @@ function renderUsers() {
 function filteredProfiles() {
   const f = state.userFilters;
   return state.profiles.filter((row) => {
-    const text = `${row.username || ""} ${row.display_name || ""} ${row.email || ""}`.toLowerCase();
+    const text = `${row.username || ""} ${row.display_name || ""}`.toLowerCase();
     return (!f.search || text.includes(f.search.toLowerCase()))
       && (!f.role || row.role === f.role)
       && (!f.status || row.status === f.status)
@@ -917,11 +921,6 @@ function validateProfilePayload(payload, existing = null) {
     profile.id !== existing?.id && canonicalUser(profile.username) === canonicalUser(payload.username)
   );
   if (duplicateUser) return "Ya existe un usuario con ese nombre de usuario.";
-  const internalAlias = internalAccessAlias(payload.username);
-  const duplicateAlias = state.profiles.find((profile) =>
-    profile.id !== existing?.id && normalize(profile.email).toLowerCase() === internalAlias.toLowerCase()
-  );
-  if (duplicateAlias) return "Ya existe un usuario con ese acceso interno.";
   if (existing?.id === state.session?.user?.id && existing.role === "Administrador") {
     if (payload.status !== "Activo") return "No puedes desactivar tu propio usuario administrador.";
     if (payload.role !== "Administrador") return "No puedes quitarte el rol Administrador desde tu propia sesión.";
@@ -988,7 +987,6 @@ function openUserModal(existing = null) {
 async function saveProfile(payload, existing = null) {
   const profilePayload = {
     username: payload.username,
-    email: internalAccessAlias(payload.username),
     display_name: payload.display_name,
     role: payload.role,
     status: payload.status,

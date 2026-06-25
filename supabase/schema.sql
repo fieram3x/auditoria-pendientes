@@ -5,7 +5,6 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
-  email text,
   username text,
   display_name text not null default 'Usuario',
   role text not null default 'Auditor' check (role in ('Administrador', 'Supervisor', 'Auditor', 'Consulta')),
@@ -20,6 +19,7 @@ create table if not exists public.profiles (
 alter table public.profiles add column if not exists username text;
 alter table public.profiles add column if not exists hotel text;
 alter table public.profiles add column if not exists department text;
+alter table public.profiles drop column if exists email;
 
 do $$
 begin
@@ -303,6 +303,6 @@ on conflict do nothing;
 -- 1. Create the first user in Supabase Auth.
 -- 2. Copy that user's UUID.
 -- 3. Run:
--- insert into public.profiles (id, email, display_name, role, status)
--- values ('USER_UUID_HERE', 'admin@example.com', 'Administrador', 'Administrador', 'Activo')
+-- insert into public.profiles (id, username, display_name, role, status)
+-- values ('USER_UUID_HERE', 'R-Matos', 'Roldany Matos', 'Administrador', 'Activo')
 -- on conflict (id) do update set role = 'Administrador', status = 'Activo';
