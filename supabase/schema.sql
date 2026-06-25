@@ -8,14 +8,26 @@ create table if not exists public.profiles (
   email text,
   username text,
   display_name text not null default 'Usuario',
-  role text not null default 'Auditor' check (role in ('Administrador', 'Supervisor', 'Auditor')),
+  role text not null default 'Auditor' check (role in ('Administrador', 'Supervisor', 'Auditor', 'Consulta')),
   status text not null default 'Activo' check (status in ('Activo', 'Inactivo')),
+  hotel text,
+  department text,
   last_access_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table public.profiles add column if not exists username text;
+alter table public.profiles add column if not exists hotel text;
+alter table public.profiles add column if not exists department text;
+
+do $$
+begin
+  alter table public.profiles drop constraint if exists profiles_role_check;
+  alter table public.profiles
+    add constraint profiles_role_check
+    check (role in ('Administrador', 'Supervisor', 'Auditor', 'Consulta'));
+end $$;
 
 create unique index if not exists profiles_username_uidx
   on public.profiles (lower(username))
@@ -114,14 +126,18 @@ using (
 );
 
 drop policy if exists "profiles_insert_self_auditor" on public.profiles;
-create policy "profiles_insert_self_auditor"
+drop policy if exists "profiles_insert_admin_or_self" on public.profiles;
+create policy "profiles_insert_admin_or_self"
 on public.profiles
 for insert
 to authenticated
 with check (
-  id = (select auth.uid())
-  and role = 'Auditor'
-  and status = 'Activo'
+  public.current_app_role() = 'Administrador'
+  or (
+    id = (select auth.uid())
+    and role = 'Auditor'
+    and status = 'Activo'
+  )
 );
 
 drop policy if exists "profiles_update_admin_or_self" on public.profiles;
@@ -147,7 +163,7 @@ create policy "incidents_select_authenticated"
 on public.incidents
 for select
 to authenticated
-using (public.current_app_role() in ('Administrador', 'Supervisor', 'Auditor'));
+using (public.current_app_role() in ('Administrador', 'Supervisor', 'Auditor', 'Consulta'));
 
 drop policy if exists "incidents_insert_authenticated" on public.incidents;
 create policy "incidents_insert_authenticated"
@@ -166,13 +182,17 @@ for update
 to authenticated
 using (
   public.current_app_role() in ('Administrador', 'Supervisor')
-  or created_by = (select auth.uid())
-  or assigned_to = (select auth.uid())
+  or (
+    public.current_app_role() = 'Auditor'
+    and (created_by = (select auth.uid()) or assigned_to = (select auth.uid()))
+  )
 )
 with check (
   public.current_app_role() in ('Administrador', 'Supervisor')
-  or created_by = (select auth.uid())
-  or assigned_to = (select auth.uid())
+  or (
+    public.current_app_role() = 'Auditor'
+    and (created_by = (select auth.uid()) or assigned_to = (select auth.uid()))
+  )
 );
 
 drop policy if exists "incidents_delete_admin" on public.incidents;
@@ -187,7 +207,7 @@ create policy "audit_select_authenticated"
 on public.audit_log
 for select
 to authenticated
-using (public.current_app_role() in ('Administrador', 'Supervisor', 'Auditor'));
+using (public.current_app_role() in ('Administrador', 'Supervisor', 'Auditor', 'Consulta'));
 
 drop policy if exists "audit_insert_authenticated" on public.audit_log;
 create policy "audit_insert_authenticated"
@@ -204,7 +224,7 @@ create policy "catalogs_select_authenticated"
 on public.catalogs
 for select
 to authenticated
-using (public.current_app_role() in ('Administrador', 'Supervisor', 'Auditor'));
+using (public.current_app_role() in ('Administrador', 'Supervisor', 'Auditor', 'Consulta'));
 
 drop policy if exists "catalogs_manage_admin_supervisor" on public.catalogs;
 create policy "catalogs_manage_admin_supervisor"

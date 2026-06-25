@@ -7,6 +7,8 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const STATUSES = ["Pendiente", "En proceso", "En espera de respuesta", "Escalado", "Resuelto", "Cerrado"];
 const CLOSED = ["Resuelto", "Cerrado"];
 const PRIORITIES = ["Baja", "Media", "Alta", "Crítica"];
+const ROLES = ["Administrador", "Supervisor", "Auditor", "Consulta"];
+const PROFILE_STATUSES = ["Activo", "Inactivo"];
 const SLA_DAYS = { "Crítica": 1, Critica: 1, Alta: 2, Media: 3, Baja: 5 };
 const LEGACY_LOGIN_DOMAIN = "auditoria.local";
 const LEGACY_USERS = {
@@ -52,6 +54,13 @@ const state = {
     responsible: "",
     type: "",
     search: ""
+  },
+  userFilters: {
+    search: "",
+    role: "",
+    status: "",
+    hotel: "",
+    department: ""
   }
 };
 
@@ -83,7 +92,8 @@ const short = (value, max = 120) => normalize(value).length > max ? `${normalize
 const role = () => state.profile?.role || "Auditor";
 const isAdmin = () => role() === "Administrador";
 const isSupervisor = () => role() === "Supervisor";
-const canManage = () => isAdmin() || isSupervisor();
+const canManageUsers = () => isAdmin();
+const canManageCatalogs = () => isAdmin() || isSupervisor();
 
 function resolveLoginEmail(value) {
   const login = normalize(value);
@@ -91,6 +101,11 @@ function resolveLoginEmail(value) {
   if (legacyUser) return legacyUser.email;
   const alias = canonicalUser(login).replace(/[^a-z0-9._-]+/g, "");
   return alias ? `${alias}@${LEGACY_LOGIN_DOMAIN}` : login;
+}
+
+function internalAccessAlias(username) {
+  const alias = canonicalUser(username).replace(/[^a-z0-9._-]+/g, "");
+  return alias ? `${alias}@${LEGACY_LOGIN_DOMAIN}` : "";
 }
 
 function incidentId() {
@@ -128,8 +143,10 @@ function slaInfo(row) {
 function canEditIncident(row, action = "edit") {
   if (isAdmin()) return true;
   if (isSupervisor()) return ["edit", "comment", "close", "reopen", "status"].includes(action);
+  if (role() === "Consulta") return false;
   if (action === "create" || action === "comment") return true;
   if (!["edit", "status"].includes(action)) return false;
+  if (!row) return false;
   const userId = state.session?.user?.id;
   return row.created_by === userId || row.assigned_to === userId;
 }
@@ -162,6 +179,29 @@ async function requireOk(result, fallback = "No se pudo completar la operación.
   return result.data;
 }
 
+function friendlyLoginError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("invalid login") || message.includes("invalid credentials") || message.includes("email not confirmed")) {
+    return "Usuario o contraseña incorrectos. Verifique sus datos e intente nuevamente.";
+  }
+  return "No fue posible iniciar sesión en este momento. Intente nuevamente o contacte al administrador.";
+}
+
+function friendlyAccessError(error) {
+  const message = String(error?.message || "");
+  if (message.toLowerCase().includes("inactivo")) return message;
+  return "No fue posible cargar el sistema. Intente nuevamente o contacte al administrador.";
+}
+
+function clearSessionState() {
+  state.session = null;
+  state.profile = null;
+  state.incidents = [];
+  state.audit = [];
+  state.profiles = [];
+  state.selectedIncidentId = null;
+}
+
 async function init() {
   if (!supabase) {
     renderConfigMissing();
@@ -174,8 +214,14 @@ async function init() {
     renderLogin();
     return;
   }
-  await loadAppData();
-  renderApp();
+  try {
+    await loadAppData();
+    renderApp();
+  } catch (error) {
+    console.error(error);
+    clearSessionState();
+    renderLogin(friendlyAccessError(error));
+  }
 }
 
 function renderConfigMissing() {
@@ -183,14 +229,13 @@ function renderConfigMissing() {
     <main class="config-shell">
       <section class="config-card">
         <div class="brand-row">
-          <div class="brand-mark">A</div>
+          <div class="brand-mark">🛡️</div>
           <div>
             <h1>Falta configuración</h1>
-            <p class="muted">Define las variables de Cloudflare Pages para conectar Supabase.</p>
+            <p class="muted">No fue posible cargar la conexión de datos.</p>
           </div>
         </div>
-        <div class="error">Configura <b>VITE_SUPABASE_URL</b> y <b>VITE_SUPABASE_ANON_KEY</b> en Cloudflare Pages.</div>
-        <p class="muted">Luego ejecuta el SQL de <code>supabase/schema.sql</code> en tu proyecto Supabase.</p>
+        <div class="error">Contacte al administrador para completar la configuración del sistema.</div>
       </section>
     </main>
   `;
@@ -201,21 +246,21 @@ function renderLogin(error = "") {
     <main class="login-shell">
       <section class="login-card">
         <div class="brand-row">
-          <div class="brand-mark">A</div>
+          <div class="brand-mark">🛡️</div>
           <div>
             <h1>Auditoría Pendientes</h1>
-            <p class="muted">Acceso con Supabase Auth</p>
+            <p class="muted">Control y seguimiento de incidencias</p>
           </div>
         </div>
         ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
-        <form id="loginForm" class="form-grid">
+        <form id="loginForm" class="form-grid" autocomplete="off">
           <div class="field form-full">
             <label>Usuario</label>
-            <input name="login" type="text" required placeholder="R-Matos" autocomplete="username">
+            <input name="login" type="text" required value="" placeholder="Inserte su usuario" autocomplete="off" autocapitalize="none" spellcheck="false">
           </div>
           <div class="field form-full">
             <label>Contraseña</label>
-            <input name="password" type="password" required autocomplete="current-password">
+            <input name="password" type="password" required value="" placeholder="Inserte su contraseña" autocomplete="new-password">
           </div>
           <button class="btn primary form-full" type="submit">Entrar</button>
         </form>
@@ -230,12 +275,20 @@ function renderLogin(error = "") {
       password: String(form.get("password") || "")
     });
     if (signError) {
-      renderLogin(signError.message);
+      console.warn("Login failed", signError);
+      renderLogin(friendlyLoginError(signError));
       return;
     }
     state.session = data.session;
-    await loadAppData();
-    renderApp();
+    try {
+      await loadAppData();
+      renderApp();
+    } catch (error) {
+      console.error(error);
+      await supabase.auth.signOut();
+      clearSessionState();
+      renderLogin(friendlyAccessError(error));
+    }
   });
 }
 
@@ -284,24 +337,24 @@ async function loadAppData() {
 }
 
 function renderApp() {
-  const pageLabels = {
-    dashboard: "Dashboard",
-    incidents: "Incidencias",
-    kanban: "Kanban",
-    audit: "Bitácora",
-    users: "Usuarios",
-    catalogs: "Catálogos"
+  const pageMeta = {
+    dashboard: { label: "Dashboard", icon: "📊" },
+    incidents: { label: "Pendientes", icon: "📋" },
+    kanban: { label: "Kanban", icon: "▦" },
+    audit: { label: "Bitácora", icon: "🧾" },
+    users: { label: "Usuarios", icon: "👥" },
+    catalogs: { label: "Catálogos", icon: "⚙️" }
   };
-  const pages = ["dashboard", "incidents", "kanban", "audit", ...(canManage() ? ["users", "catalogs"] : [])];
+  const pages = ["dashboard", "incidents", "kanban", "audit", ...(canManageUsers() ? ["users"] : []), ...(canManageCatalogs() ? ["catalogs"] : [])];
   app.innerHTML = `
     <div class="app-layout">
       <aside class="sidebar">
         <div class="side-title">
-          <div class="brand-mark">A</div>
-          <div><strong>Auditoría</strong><span>Supabase + Cloudflare</span></div>
+          <div class="brand-mark">🛡️</div>
+          <div><strong>Auditoría</strong><span>Panel de control</span></div>
         </div>
         <nav class="nav">
-          ${pages.map((page) => `<button data-page="${page}" class="${state.page === page ? "active" : ""}">${pageLabels[page]}</button>`).join("")}
+          ${pages.map((page) => `<button data-page="${page}" class="${state.page === page ? "active" : ""}"><span>${pageMeta[page].icon}</span>${pageMeta[page].label}</button>`).join("")}
         </nav>
         <div class="sidebar-footer">
           <span>${escapeHtml(state.profile?.display_name || state.profile?.username || "Usuario")}</span>
@@ -330,8 +383,7 @@ function renderApp() {
   });
   document.querySelector("#logoutBtn").addEventListener("click", async () => {
     await supabase.auth.signOut();
-    state.session = null;
-    state.profile = null;
+    clearSessionState();
     renderLogin();
   });
   renderPage();
@@ -475,8 +527,9 @@ function renderIncidents() {
   if (!state.selectedIncidentId && rows[0]) state.selectedIncidentId = rows[0].id;
   const selected = rows.find((row) => row.id === state.selectedIncidentId) || rows[0];
   if (selected) state.selectedIncidentId = selected.id;
+  const createAction = canEditIncident(null, "create") ? `<button class="btn primary" data-action="new-incident">Nueva incidencia</button>` : "";
   return `
-    ${pageHead("Incidencias", "Tabla tipo Excel, filtros, acciones y cierre formal.", `<button class="btn primary" data-action="new-incident">Nueva incidencia</button>`)}
+    ${pageHead("Incidencias", "Tabla tipo Excel, filtros, acciones y cierre formal.", createAction)}
     ${renderFilters()}
     <div class="toolbar">
       <strong>${rows.length} registro(s)</strong>
@@ -612,27 +665,87 @@ function renderAudit() {
 }
 
 function renderUsers() {
+  if (!canManageUsers()) {
+    return `
+      ${pageHead("Usuarios", "Administración de accesos.")}
+      <div class="error">No tienes permisos para administrar usuarios.</div>
+    `;
+  }
+  const rows = filteredProfiles();
   return `
-    ${pageHead("Usuarios", "Perfiles y roles de la aplicación.")}
+    ${pageHead("Usuarios", "Administración de accesos, roles y estados.", `<button class="btn primary" data-action="new-user">Nuevo usuario</button>`)}
+    ${renderUserFilters()}
+    <div class="toolbar">
+      <strong>${rows.length} usuario(s)</strong>
+      <span class="muted">Los cambios quedan registrados en bitácora.</span>
+    </div>
     <div class="excel-wrap">
       <div class="excel-scroller">
         <table class="excel">
-          <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último acceso</th></tr></thead>
+          <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Hotel</th><th>Departamento</th><th>Último acceso</th><th>Acciones</th></tr></thead>
           <tbody>
-            ${state.profiles.map((row) => `
+            ${rows.map((row) => `
               <tr>
                 <td>${escapeHtml(row.username || "")}</td>
                 <td>${escapeHtml(row.display_name || "")}</td>
                 <td>${badge(row.role || "Auditor")}</td>
                 <td>${badge(row.status || "Activo")}</td>
+                <td>${escapeHtml(row.hotel || "")}</td>
+                <td>${escapeHtml(row.department || "")}</td>
                 <td>${escapeHtml(fmtDate(row.last_access_at, true))}</td>
+                <td>
+                  <div class="table-actions">
+                    <button class="btn tiny" data-action="edit-user" data-id="${escapeHtml(row.id)}">Editar</button>
+                    <button class="btn tiny" data-action="toggle-user" data-id="${escapeHtml(row.id)}">${row.status === "Activo" ? "Desactivar" : "Activar"}</button>
+                    <button class="btn tiny" data-action="password-user" data-id="${escapeHtml(row.id)}">Contraseña</button>
+                    <button class="btn tiny" data-action="audit-user" data-id="${escapeHtml(row.id)}">Bitácora</button>
+                  </div>
+                </td>
               </tr>
-            `).join("")}
+            `).join("") || `<tr><td colspan="8" class="empty">No hay usuarios con los filtros seleccionados.</td></tr>`}
           </tbody>
         </table>
       </div>
     </div>
   `;
+}
+
+function filteredProfiles() {
+  const f = state.userFilters;
+  return state.profiles.filter((row) => {
+    const text = `${row.username || ""} ${row.display_name || ""} ${row.email || ""}`.toLowerCase();
+    return (!f.search || text.includes(f.search.toLowerCase()))
+      && (!f.role || row.role === f.role)
+      && (!f.status || row.status === f.status)
+      && (!f.hotel || row.hotel === f.hotel)
+      && (!f.department || row.department === f.department);
+  });
+}
+
+function renderUserFilters() {
+  const f = state.userFilters;
+  const select = (key, label, values) => `
+    <div class="field">
+      <label>${label}</label>
+      <select data-user-filter="${key}">
+        <option value="">Todos</option>
+        ${optionList(values, f[key])}
+      </select>
+    </div>
+  `;
+  return `
+    <div class="filters user-filters">
+      <div class="field"><label>Buscar</label><input data-user-filter="search" value="${escapeHtml(f.search)}" placeholder="Usuario o nombre"></div>
+      ${select("role", "Rol", ROLES)}
+      ${select("status", "Estado", PROFILE_STATUSES)}
+      ${select("hotel", "Hotel", profileDistinct("hotel"))}
+      ${select("department", "Departamento", profileDistinct("department"))}
+    </div>
+  `;
+}
+
+function profileDistinct(fieldName) {
+  return [...new Set(state.profiles.map((row) => normalize(row[fieldName])).filter(Boolean))].sort();
 }
 
 function renderCatalogs() {
@@ -662,6 +775,12 @@ function bindPageEvents() {
       renderPage();
     });
   });
+  document.querySelectorAll("[data-user-filter]").forEach((input) => {
+    input.addEventListener("input", () => {
+      state.userFilters[input.dataset.userFilter] = input.value;
+      renderPage();
+    });
+  });
   document.querySelectorAll("[data-select]").forEach((item) => {
     item.addEventListener("click", () => {
       state.selectedIncidentId = item.dataset.select;
@@ -686,12 +805,18 @@ function bindPageEvents() {
     });
   });
   document.querySelectorAll("[data-action]").forEach((button) => {
-    button.addEventListener("click", () => handleAction(button.dataset.action, button.dataset.id));
+    button.addEventListener("click", () => {
+      handleAction(button.dataset.action, button.dataset.id).catch((error) => {
+        console.error(error);
+        showToast("No fue posible completar la acción.");
+      });
+    });
   });
 }
 
-function handleAction(action, id) {
+async function handleAction(action, id) {
   const row = state.incidents.find((incident) => incident.id === id);
+  const profile = state.profiles.find((item) => item.id === id);
   if (action === "new-incident") openIncidentModal();
   if (action === "edit") openIncidentModal(row);
   if (action === "detail") openDetailModal(row);
@@ -700,6 +825,12 @@ function handleAction(action, id) {
   if (action === "reopen") openReopenModal(row);
   if (action === "export-csv") exportCsv(filteredIncidents());
   if (action === "new-catalog") openCatalogModal();
+  if (action === "new-user") openUserModal();
+  if (action === "edit-user") openUserModal(profile);
+  if (action === "toggle-user") await toggleUserStatus(profile);
+  if (action === "password-user") openPasswordModal(profile);
+  if (action === "audit-user") openUserAuditModal(profile);
+  if (action === "password-log") await registerPasswordReset(profile);
 }
 
 function modalHtml(title, body, footer = "") {
@@ -763,6 +894,179 @@ function field(name, label, value = "", type = "text", options = [], extra = "")
 
 function formObject(form) {
   return Object.fromEntries([...new FormData(form).entries()].map(([key, value]) => [key, normalize(value)]));
+}
+
+function activeAdminCountWith(targetId, nextRole, nextStatus) {
+  return state.profiles.filter((profile) => {
+    const roleValue = profile.id === targetId ? nextRole : profile.role;
+    const statusValue = profile.id === targetId ? nextStatus : profile.status;
+    return roleValue === "Administrador" && statusValue === "Activo";
+  }).length;
+}
+
+function validateProfilePayload(payload, existing = null) {
+  if (!existing && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.id || "")) {
+    return "El ID de acceso no tiene un formato válido.";
+  }
+  if (!payload.username || !payload.display_name || !payload.role || !payload.status) {
+    return "Usuario, nombre, rol y estado son obligatorios.";
+  }
+  if (!ROLES.includes(payload.role)) return "Selecciona un rol válido.";
+  if (!PROFILE_STATUSES.includes(payload.status)) return "Selecciona un estado válido.";
+  const duplicateUser = state.profiles.find((profile) =>
+    profile.id !== existing?.id && canonicalUser(profile.username) === canonicalUser(payload.username)
+  );
+  if (duplicateUser) return "Ya existe un usuario con ese nombre de usuario.";
+  const internalAlias = internalAccessAlias(payload.username);
+  const duplicateAlias = state.profiles.find((profile) =>
+    profile.id !== existing?.id && normalize(profile.email).toLowerCase() === internalAlias.toLowerCase()
+  );
+  if (duplicateAlias) return "Ya existe un usuario con ese acceso interno.";
+  if (existing?.id === state.session?.user?.id && existing.role === "Administrador") {
+    if (payload.status !== "Activo") return "No puedes desactivar tu propio usuario administrador.";
+    if (payload.role !== "Administrador") return "No puedes quitarte el rol Administrador desde tu propia sesión.";
+  }
+  if (existing && activeAdminCountWith(existing.id, payload.role, payload.status) < 1) {
+    return "Debe quedar al menos un administrador activo.";
+  }
+  return "";
+}
+
+async function logUserAction(targetProfile, action, oldValue, newValue, comment) {
+  await supabase.from("audit_log").insert({
+    incident_id: null,
+    user_id: state.session.user.id,
+    legacy_user: state.profile?.display_name || state.profile?.username || "Usuario",
+    action,
+    changed_field: `Usuario: ${targetProfile?.username || ""}`,
+    old_value: oldValue || "",
+    new_value: newValue || "",
+    comment,
+    hotel: targetProfile?.hotel || "",
+    status: targetProfile?.status || ""
+  });
+}
+
+function openUserModal(existing = null) {
+  const isEdit = Boolean(existing);
+  const body = `
+    <form id="userForm" class="form-grid">
+      ${!isEdit ? `
+        <div class="field form-full">
+          <label>ID de acceso</label>
+          <input name="id" type="text" required placeholder="Pegue el ID de la cuenta de acceso">
+        </div>
+      ` : ""}
+      ${field("username", "Usuario", existing?.username || "")}
+      ${field("display_name", "Nombre", existing?.display_name || "")}
+      ${field("role", "Rol", existing?.role || "Auditor", "select", ROLES)}
+      ${field("status", "Estado", existing?.status || "Activo", "select", PROFILE_STATUSES)}
+      ${field("hotel", "Hotel", existing?.hotel || "", "select", getCatalog("Hotel"))}
+      ${field("department", "Departamento", existing?.department || "", "select", getCatalog("Departamento"))}
+      <button class="btn primary form-full" type="submit">${isEdit ? "Guardar cambios" : "Crear usuario"}</button>
+    </form>
+  `;
+  const modal = modalHtml(isEdit ? `Editar ${existing.username || "usuario"}` : "Nuevo usuario", body);
+  modal.querySelector("#userForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = formObject(event.currentTarget);
+    const validation = validateProfilePayload(payload, existing);
+    if (validation) {
+      showToast(validation);
+      return;
+    }
+    try {
+      await saveProfile(payload, existing);
+      modal.close();
+    } catch (error) {
+      console.error(error);
+      showToast("No fue posible guardar el usuario. Verifica los datos e intenta nuevamente.");
+    }
+  });
+}
+
+async function saveProfile(payload, existing = null) {
+  const profilePayload = {
+    username: payload.username,
+    email: internalAccessAlias(payload.username),
+    display_name: payload.display_name,
+    role: payload.role,
+    status: payload.status,
+    hotel: payload.hotel || null,
+    department: payload.department || null,
+    updated_at: nowISO()
+  };
+  if (existing) {
+    await requireOk(await supabase.from("profiles").update(profilePayload).eq("id", existing.id), "No se pudo actualizar el usuario.");
+    await logUserAction(existing, "Usuario editado", JSON.stringify(existing), JSON.stringify(profilePayload), "Perfil de usuario actualizado.");
+    showToast("Usuario actualizado.");
+  } else {
+    const row = { id: payload.id, ...profilePayload, created_at: nowISO() };
+    await requireOk(await supabase.from("profiles").insert(row), "No se pudo crear el usuario.");
+    await logUserAction(row, "Usuario creado", "", JSON.stringify(profilePayload), "Perfil de usuario creado.");
+    showToast("Usuario creado.");
+  }
+  await reload();
+}
+
+async function toggleUserStatus(profile) {
+  if (!profile) return;
+  const nextStatus = profile.status === "Activo" ? "Inactivo" : "Activo";
+  const validation = validateProfilePayload({ ...profile, status: nextStatus }, profile);
+  if (validation) {
+    showToast(validation);
+    return;
+  }
+  try {
+    await requireOk(await supabase.from("profiles").update({ status: nextStatus, updated_at: nowISO() }).eq("id", profile.id), "No se pudo cambiar el estado.");
+    await logUserAction(profile, nextStatus === "Activo" ? "Activación de usuario" : "Desactivación de usuario", profile.status, nextStatus, `Estado cambiado a ${nextStatus}.`);
+    showToast(`Usuario ${nextStatus.toLowerCase()}.`);
+    await reload();
+  } catch (error) {
+    console.error(error);
+    showToast("No fue posible cambiar el estado del usuario.");
+  }
+}
+
+function openPasswordModal(profile) {
+  if (!profile) return;
+  const modal = modalHtml(`Contraseña de ${profile.username || "usuario"}`, `
+    <div class="selected-card">
+      <p>Por seguridad, la contraseña se establece desde el panel privado de cuentas de acceso.</p>
+      <p>Después de cambiarla, registra el movimiento con el botón inferior para conservar la bitácora.</p>
+      <button class="btn primary" data-action="password-log" data-id="${escapeHtml(profile.id)}">Registrar restablecimiento</button>
+    </div>
+  `);
+  modal.querySelector("[data-action='password-log']").addEventListener("click", () => {
+    registerPasswordReset(profile).catch((error) => {
+      console.error(error);
+      showToast("No fue posible registrar el restablecimiento.");
+    });
+  });
+}
+
+async function registerPasswordReset(profile) {
+  if (!profile) return;
+  await logUserAction(profile, "Restablecimiento de contraseña", "", "Registrado", "Se registró el cambio de contraseña del usuario.");
+  document.querySelector("#modal")?.close();
+  showToast("Restablecimiento registrado en bitácora.");
+  await reload();
+}
+
+function openUserAuditModal(profile) {
+  if (!profile) return;
+  const entries = state.audit.filter((item) => normalize(item.changed_field).includes(`Usuario: ${profile.username}`));
+  modalHtml(`Bitácora de ${profile.username || "usuario"}`, `
+    <div class="timeline">
+      ${entries.map((item) => `
+        <div class="timeline-item">
+          <b>${escapeHtml(item.action)}</b> · <span class="muted">${escapeHtml(fmtDate(item.occurred_at, true))}</span>
+          <p>${escapeHtml(item.comment || "")}</p>
+          <p class="muted">${escapeHtml(short(item.old_value, 140))} → ${escapeHtml(short(item.new_value, 140))}</p>
+        </div>
+      `).join("") || `<div class="empty">Sin movimientos registrados para este usuario.</div>`}
+    </div>
+  `);
 }
 
 async function createIncident(payload) {

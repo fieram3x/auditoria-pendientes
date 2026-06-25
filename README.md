@@ -65,20 +65,20 @@ No uses ni expongas `service_role` en el frontend.
 Configuración recomendada:
 
 - Framework preset: `Vite`
-- Build command: `npm run build`
+- Build command: `pnpm build`
 - Build output directory: `dist`
 
 ## Desarrollo local
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Para build:
 
 ```bash
-npm run build
+pnpm build
 ```
 
 ## Módulos
@@ -88,7 +88,7 @@ npm run build
 - Detalle, comentario, edición, cierre formal y reapertura.
 - Kanban por estatus.
 - Bitácora general.
-- Usuarios/perfiles.
+- Usuarios/perfiles con filtros, roles, activación/desactivación y registro en bitácora.
 - Catálogos editables para administradores y supervisores.
 
 ## Migración desde Google Sheets
@@ -143,3 +143,12 @@ El SQL activa RLS en:
 - `catalogs`
 
 El frontend usa la anon key pública y depende de Supabase Auth + RLS para limitar acciones.
+
+Roles operativos:
+
+- `Administrador`: administra usuarios, catálogos e incidencias.
+- `Supervisor`: opera incidencias y catálogos.
+- `Auditor`: crea, comenta y edita incidencias propias/asignadas.
+- `Consulta`: solo lectura.
+
+El módulo Usuarios no muestra aliases técnicos ni correos internos. Los cambios de contraseña se realizan fuera del frontend y se registran en la bitácora desde la app.
