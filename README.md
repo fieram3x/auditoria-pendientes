@@ -35,7 +35,9 @@ supabase/schema.sql
 
 ## Usuarios heredados
 
-La app permite iniciar sesión con usuarios heredados como `R-Matos`, `B-Paredes` o `F-Peña`. Supabase Auth requiere emails internamente, por lo que estos usuarios se crean en Auth con aliases privados:
+La app permite iniciar sesión con usuarios heredados como `R-Matos`, `B-Paredes` o `F-Peña`. La pantalla de login solo pide `Usuario` y `Contraseña`.
+
+Supabase Auth requiere un identificador interno compatible con su sistema de autenticación. Para conservar el login por usuario, se usan aliases técnicos privados que la app oculta:
 
 - `R-Matos` -> `r-matos@auditoria.local`
 - `R-Perez` -> `r-perez@auditoria.local`
@@ -45,7 +47,7 @@ La app permite iniciar sesión con usuarios heredados como `R-Matos`, `B-Paredes
 - `R-Martinez` -> `r-martinez@auditoria.local`
 - `M-Herrera` -> `m-herrera@auditoria.local`
 
-Las contraseñas se configuran directamente en Supabase Auth; no se guardan en el repositorio.
+Las contraseñas se configuran directamente en Supabase Auth; no se guardan en el repositorio. Los usuarios finales no necesitan conocer estos aliases.
 
 ## Variables de Cloudflare Pages
 

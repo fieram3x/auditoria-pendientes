@@ -87,7 +87,6 @@ const canManage = () => isAdmin() || isSupervisor();
 
 function resolveLoginEmail(value) {
   const login = normalize(value);
-  if (login.includes("@")) return login;
   const legacyUser = LEGACY_USERS[canonicalUser(login)];
   if (legacyUser) return legacyUser.email;
   const alias = canonicalUser(login).replace(/[^a-z0-9._-]+/g, "");
@@ -211,7 +210,7 @@ function renderLogin(error = "") {
         ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
         <form id="loginForm" class="form-grid">
           <div class="field form-full">
-            <label>Usuario o email</label>
+            <label>Usuario</label>
             <input name="login" type="text" required placeholder="R-Matos" autocomplete="username">
           </div>
           <div class="field form-full">
@@ -305,7 +304,7 @@ function renderApp() {
           ${pages.map((page) => `<button data-page="${page}" class="${state.page === page ? "active" : ""}">${pageLabels[page]}</button>`).join("")}
         </nav>
         <div class="sidebar-footer">
-          <span>${escapeHtml(state.profile?.display_name || state.session.user.email)}</span>
+          <span>${escapeHtml(state.profile?.display_name || state.profile?.username || "Usuario")}</span>
           <span>${escapeHtml(role())}</span>
           <button class="btn ghost" id="logoutBtn">Cerrar sesión</button>
         </div>
@@ -618,13 +617,12 @@ function renderUsers() {
     <div class="excel-wrap">
       <div class="excel-scroller">
         <table class="excel">
-          <thead><tr><th>Usuario</th><th>Nombre</th><th>Email interno</th><th>Rol</th><th>Estado</th><th>Último acceso</th></tr></thead>
+          <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último acceso</th></tr></thead>
           <tbody>
             ${state.profiles.map((row) => `
               <tr>
                 <td>${escapeHtml(row.username || "")}</td>
                 <td>${escapeHtml(row.display_name || "")}</td>
-                <td>${escapeHtml(row.email || "")}</td>
                 <td>${badge(row.role || "Auditor")}</td>
                 <td>${badge(row.status || "Activo")}</td>
                 <td>${escapeHtml(fmtDate(row.last_access_at, true))}</td>
@@ -805,7 +803,7 @@ async function insertAudit(incidentIdValue, action, fieldName, oldValue, newValu
   await supabase.from("audit_log").insert({
     incident_id: incidentIdValue,
     user_id: state.session.user.id,
-    legacy_user: state.profile?.display_name || state.session.user.email || "",
+    legacy_user: state.profile?.display_name || state.profile?.username || "Usuario",
     action,
     changed_field: fieldName,
     old_value: oldValue ?? "",
