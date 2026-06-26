@@ -513,12 +513,6 @@ table.excel {
   min-width: 250px;
 }
 
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
-  gap: 12px;
-}
-
 .panel {
   padding: 14px;
 }
@@ -693,7 +687,6 @@ table.excel {
   .filters,
   .kpi-grid,
   .charts,
-  .split,
   .form-grid {
     grid-template-columns: 1fr;
   }

@@ -39,7 +39,6 @@ const state = {
   audit: [],
   profiles: [],
   catalogs: [],
-  selectedIncidentId: null,
   filters: {
     hotel: "",
     department: "",
@@ -249,7 +248,6 @@ function clearSessionState() {
   state.incidents = [];
   state.audit = [];
   state.profiles = [];
-  state.selectedIncidentId = null;
 }
 
 async function init() {
@@ -461,7 +459,6 @@ async function loadAppData() {
   state.audit = await requireOk(audit);
   state.profiles = (await requireOk(profiles)).map(withPasswordMask);
   state.catalogs = await requireOk(catalogs);
-  if (!state.selectedIncidentId && state.incidents[0]) state.selectedIncidentId = state.incidents[0].id;
   state.loading = false;
 }
 
@@ -649,9 +646,6 @@ function barPanel(title, rows, key) {
 
 function renderIncidents() {
   const rows = filteredIncidents();
-  if (!state.selectedIncidentId && rows[0]) state.selectedIncidentId = rows[0].id;
-  const selected = rows.find((row) => row.id === state.selectedIncidentId) || rows[0];
-  if (selected) state.selectedIncidentId = selected.id;
   const createAction = canEditIncident(null, "create") ? `<button class="btn primary" data-action="new-incident">Nueva incidencia</button>` : "";
   return `
     ${pageHead("Incidencias", "Tabla tipo Excel, filtros, acciones y cierre formal.", createAction)}
@@ -660,15 +654,13 @@ function renderIncidents() {
       <strong>${rows.length} registro(s)</strong>
       <button class="btn" data-action="export-csv">Exportar CSV</button>
     </div>
-    <div class="split">
-      ${excelTable(rows)}
-      <aside class="panel">${selected ? selectedPanel(selected) : `<div class="empty">Selecciona una incidencia.</div>`}</aside>
-    </div>
+    ${excelTable(rows)}
   `;
 }
 
 function excelTable(rows) {
   const columns = [
+    ["actions", "Abrir"],
     ["id", "ID"],
     ["created_at", "Fecha"],
     ["hotel", "División"],
@@ -689,7 +681,7 @@ function excelTable(rows) {
           <thead><tr>${columns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("")}</tr></thead>
           <tbody>
             ${rows.length ? rows.map((row) => `
-              <tr data-select="${escapeHtml(row.id)}" class="${row.id === state.selectedIncidentId ? "selected" : ""}">
+              <tr>
                 ${columns.map(([key]) => `<td>${cellValue(row, key)}</td>`).join("")}
               </tr>
             `).join("") : `<tr><td colspan="${columns.length}" class="empty">No hay incidencias con los filtros seleccionados.</td></tr>`}
@@ -701,7 +693,8 @@ function excelTable(rows) {
 }
 
 function cellValue(row, key) {
-  if (key === "id") return `<button class="row-button" data-select="${escapeHtml(row.id)}">${escapeHtml(row.id)}</button>`;
+  if (key === "id") return escapeHtml(row.id);
+  if (key === "actions") return `<button class="btn tiny" data-action="open-incident" data-id="${escapeHtml(row.id)}">Abrir</button>`;
   if (key === "created_at" || key === "due_at") return escapeHtml(fmtDate(row[key]));
   if (key === "priority") return badge(row.priority);
   if (key === "status") return badge(row.status);
@@ -712,28 +705,6 @@ function cellValue(row, key) {
   if (key === "subject") return escapeHtml(short(row.subject, 90));
   if (key === "description") return escapeHtml(short(row.description, 130));
   return escapeHtml(row[key] || "");
-}
-
-function selectedPanel(row) {
-  const info = slaInfo(row);
-  return `
-    <h3>${escapeHtml(row.subject || row.id)}</h3>
-    <div class="selected-card">
-      <div>${badge(row.priority)} ${badge(row.status)} ${badge(info.label, info.cls)}</div>
-      <span class="muted">${escapeHtml(row.id)}</span>
-      <strong>${escapeHtml(row.hotel || "Sin división")}</strong>
-      <span class="muted">${escapeHtml(row.department || "Sin departamento")} · Responsable: ${escapeHtml(row.responsible || "Sin asignar")}</span>
-      <p>${escapeHtml(row.description || "")}</p>
-    </div>
-    <div class="actions">
-      <button class="btn" data-action="detail" data-id="${escapeHtml(row.id)}">Detalle</button>
-      <button class="btn" data-action="comment" data-id="${escapeHtml(row.id)}" ${!canEditIncident(row, "comment") ? "disabled" : ""}>Comentar</button>
-      <button class="btn" data-action="edit" data-id="${escapeHtml(row.id)}" ${!canEditIncident(row, "edit") ? "disabled" : ""}>Editar</button>
-      ${CLOSED.includes(row.status)
-        ? `<button class="btn" data-action="reopen" data-id="${escapeHtml(row.id)}" ${!canEditIncident(row, "reopen") ? "disabled" : ""}>Reabrir</button>`
-        : `<button class="btn primary" data-action="close" data-id="${escapeHtml(row.id)}" ${!canEditIncident(row, "close") ? "disabled" : ""}>Cerrar</button>`}
-    </div>
-  `;
 }
 
 function renderKanban() {
@@ -749,7 +720,7 @@ function renderKanban() {
             <div class="kanban-head"><span>${escapeHtml(status)}</span><b>${group.length}</b></div>
             ${group.map((row) => `
               <article class="kanban-card">
-                <button class="row-button" data-select="${escapeHtml(row.id)}" data-page-link="incidents">${escapeHtml(row.id)}</button>
+                <button class="row-button" data-action="open-incident" data-id="${escapeHtml(row.id)}">${escapeHtml(row.id)}</button>
                 <span class="muted">${escapeHtml(row.hotel || "")} · ${escapeHtml(row.department || "")}</span>
                 <span>${badge(row.priority)} ${badge(slaInfo(row).label, slaInfo(row).cls)}</span>
                 <strong>${escapeHtml(short(row.subject || row.description, 95))}</strong>
@@ -904,13 +875,6 @@ function bindPageEvents() {
       renderPage();
     });
   });
-  document.querySelectorAll("[data-select]").forEach((item) => {
-    item.addEventListener("click", () => {
-      state.selectedIncidentId = item.dataset.select;
-      if (item.dataset.pageLink) state.page = item.dataset.pageLink;
-      renderApp();
-    });
-  });
   document.querySelectorAll("[data-status-change]").forEach((select) => {
     select.addEventListener("change", async () => {
       const row = state.incidents.find((incident) => incident.id === select.dataset.statusChange);
@@ -942,7 +906,7 @@ async function handleAction(action, id) {
   const profile = state.profiles.find((item) => item.id === id);
   if (action === "new-incident") openIncidentModal();
   if (action === "edit") openIncidentModal(row);
-  if (action === "detail") openDetailModal(row);
+  if (action === "open-incident" || action === "detail") openDetailModal(row);
   if (action === "comment") openCommentModal(row);
   if (action === "close") openCloseModal(row);
   if (action === "reopen") openReopenModal(row);
@@ -1274,17 +1238,29 @@ async function insertAudit(incidentIdValue, action, fieldName, oldValue, newValu
 }
 
 function openDetailModal(row) {
-  modalHtml(`Detalle ${row.id}`, `
+  if (!row) return;
+  const modal = modalHtml(row.subject || `Detalle ${row.id}`, `
     <div class="selected-card">
       <div>${badge(row.priority)} ${badge(row.status)} ${badge(slaInfo(row).label, slaInfo(row).cls)}</div>
+      <p><b>ID:</b> ${escapeHtml(row.id || "")}</p>
       <p><b>División:</b> ${escapeHtml(row.hotel || "")}</p>
       <p><b>Departamento:</b> ${escapeHtml(row.department || "")}</p>
+      <p><b>Tipo:</b> ${escapeHtml(row.incident_type || "")}</p>
+      <p><b>Área responsable:</b> ${escapeHtml(row.responsible_area || "")}</p>
       <p><b>Responsable:</b> ${escapeHtml(row.responsible || "Sin asignar")}</p>
       <p><b>Asunto:</b> ${escapeHtml(row.subject || "")}</p>
       <p><b>Descripción:</b><br>${escapeHtml(row.description || "")}</p>
+      <p><b>Fecha compromiso:</b> ${escapeHtml(fmtDate(row.due_at))}</p>
       <p><b>Causa raíz:</b> ${escapeHtml(row.root_cause || "")}</p>
       <p><b>Acción tomada:</b> ${escapeHtml(row.action_taken || "")}</p>
       <p><b>Comentario final:</b> ${escapeHtml(row.final_comment || "")}</p>
+    </div>
+    <div class="actions">
+      <button class="btn" data-detail-action="comment" ${!canEditIncident(row, "comment") ? "disabled" : ""}>Comentar</button>
+      <button class="btn" data-detail-action="edit" ${!canEditIncident(row, "edit") ? "disabled" : ""}>Editar</button>
+      ${CLOSED.includes(row.status)
+        ? `<button class="btn primary" data-detail-action="reopen" ${!canEditIncident(row, "reopen") ? "disabled" : ""}>Reabrir</button>`
+        : `<button class="btn primary" data-detail-action="close" ${!canEditIncident(row, "close") ? "disabled" : ""}>Cerrar</button>`}
     </div>
     <h3>Bitácora</h3>
     <div class="timeline">
@@ -1297,6 +1273,15 @@ function openDetailModal(row) {
       `).join("") || `<div class="empty">Sin movimientos.</div>`}
     </div>
   `);
+  modal.querySelectorAll("[data-detail-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      modal.close();
+      handleAction(button.dataset.detailAction, row.id).catch((error) => {
+        console.error(error);
+        showToast("No fue posible completar la acción.");
+      });
+    });
+  });
 }
 
 function openCommentModal(row) {
