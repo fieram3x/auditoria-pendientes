@@ -256,6 +256,16 @@ function friendlyAccessError(error) {
   return "No fue posible cargar el sistema. Intente nuevamente o contacte al administrador.";
 }
 
+function friendlyUserSaveError(error) {
+  const message = String(error?.message || error?.reason || "").trim();
+  const lower = message.toLowerCase();
+  if (lower.includes("duplicate_username")) return "Ya existe un usuario con ese nombre de usuario.";
+  if (lower.includes("weak_password")) return "La contraseña inicial debe tener al menos 8 caracteres.";
+  if (lower.includes("legacy_user")) return "Falta actualizar la tabla audit_log en Supabase. Ejecuta el SQL actualizado y vuelve a intentar.";
+  if (lower.includes("forbidden")) return "No tienes permisos para guardar usuarios.";
+  return message ? `No fue posible guardar el usuario: ${message}` : "No fue posible guardar el usuario. Verifica los datos e intenta nuevamente.";
+}
+
 function clearSessionState() {
   state.session = null;
   state.profile = null;
@@ -1133,7 +1143,7 @@ function openUserModal(existing = null) {
       modal.close();
     } catch (error) {
       console.error(error);
-      showToast("No fue posible guardar el usuario. Verifica los datos e intenta nuevamente.");
+      showToast(friendlyUserSaveError(error));
     }
   });
 }
