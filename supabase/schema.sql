@@ -238,8 +238,25 @@ as $$
   select encode(extensions.digest(coalesce(p_token, '')::text, 'sha256'::text), 'hex')
 $$;
 
-drop function if exists public.app_is_direct_admin(text);
-drop function if exists public.app_direct_admin_profile();
+create or replace function public.app_is_direct_admin(p_token text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select false
+$$;
+
+create or replace function public.app_direct_admin_profile()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select null::jsonb
+$$;
 
 create or replace function public.app_password_matches(p_password text, p_hash text)
 returns boolean
@@ -1038,6 +1055,9 @@ for all
 to anon
 using (public.current_app_role() in ('Administrador', 'Supervisor'))
 with check (public.current_app_role() in ('Administrador', 'Supervisor'));
+
+drop function if exists public.app_is_direct_admin(text);
+drop function if exists public.app_direct_admin_profile();
 
 revoke all on table public.app_settings from anon;
 revoke all on table public.app_users from anon;
