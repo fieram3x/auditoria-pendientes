@@ -226,6 +226,40 @@ as $$
   select encode(extensions.digest(coalesce(p_token, '')::text, 'sha256'::text), 'hex')
 $$;
 
+create or replace function public.app_is_direct_admin(p_token text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(p_token, '') = 'direct-admin-bootstrap'
+$$;
+
+create or replace function public.app_direct_admin_profile()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'id', null,
+    'username', 'admin-directo',
+    'display_name', 'Administrador Directo',
+    'role', 'Administrador',
+    'status', 'Activo',
+    'hotel', null,
+    'department', null,
+    'last_access_at', null,
+    'failed_attempts', 0,
+    'blocked', false,
+    'must_change_password', false,
+    'created_at', null,
+    'updated_at', null
+  )
+$$;
+
 create or replace function public.app_password_matches(p_password text, p_hash text)
 returns boolean
 language sql
@@ -296,8 +330,8 @@ begin
 end;
 $$;
 
-create or replace function public.current_app_user_id()
-returns uuid
+create or replace function public.app_request_token()
+returns text
 language plpgsql
 stable
 security definer
@@ -306,7 +340,6 @@ as $$
 declare
   v_headers jsonb := '{}'::jsonb;
   v_headers_text text;
-  v_token text;
 begin
   v_headers_text := nullif(current_setting('request.headers', true), '');
   if v_headers_text is not null then
@@ -318,10 +351,26 @@ begin
     end;
   end if;
 
-  v_token := coalesce(
+  return coalesce(
     v_headers ->> 'x-app-session-token',
     v_headers ->> 'X-App-Session-Token'
   );
+end;
+$$;
+
+create or replace function public.current_app_user_id()
+returns uuid
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_token text := public.app_request_token();
+begin
+  if public.app_is_direct_admin(v_token) then
+    return null;
+  end if;
 
   return public.app_user_id_from_token(v_token);
 end;
@@ -329,15 +378,27 @@ $$;
 
 create or replace function public.current_app_role()
 returns text
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
+declare
+  v_token text := public.app_request_token();
+  v_role text;
+begin
+  if public.app_is_direct_admin(v_token) then
+    return 'Administrador';
+  end if;
+
   select u.role
+    into v_role
   from public.app_users u
   where u.id = public.current_app_user_id()
-  limit 1
+  limit 1;
+
+  return v_role;
+end;
 $$;
 
 create or replace function public.app_login(p_username text, p_password text)
@@ -433,6 +494,14 @@ declare
   v_user_id uuid := public.app_user_id_from_token(p_token);
   v_expires_at timestamptz;
 begin
+  if public.app_is_direct_admin(p_token) then
+    return jsonb_build_object(
+      'ok', true,
+      'expires_at', now() + interval '1 year',
+      'profile', public.app_direct_admin_profile()
+    );
+  end if;
+
   if v_user_id is null then
     return jsonb_build_object('ok', false, 'reason', 'session_expired');
   end if;
@@ -571,6 +640,10 @@ declare
   v_actor_id uuid := public.app_user_id_from_token(p_token);
   v_role text;
 begin
+  if public.app_is_direct_admin(p_token) then
+    return null;
+  end if;
+
   if v_actor_id is null then
     return null;
   end if;
@@ -596,6 +669,7 @@ set search_path = public
 as $$
 declare
   v_actor_id uuid := public.app_admin_user_guard(p_token);
+  v_direct_admin boolean := public.app_is_direct_admin(p_token);
   v_existing public.app_users%rowtype;
   v_target public.app_users%rowtype;
   v_username text := trim(coalesce(p_user ->> 'username', ''));
@@ -609,7 +683,7 @@ declare
   v_password text := coalesce(p_user ->> 'password', '');
   v_active_admins integer;
 begin
-  if v_actor_id is null then
+  if v_actor_id is null and not v_direct_admin then
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
 
@@ -664,7 +738,7 @@ begin
     returning * into v_target;
 
     insert into public.audit_log (user_id, legacy_user, action, changed_field, old_value, new_value, comment, status)
-    values (v_actor_id, (select display_name from public.app_users where id = v_actor_id), 'Usuario creado', 'Usuario: ' || v_target.username, '', v_target.username, 'Perfil de usuario creado.', v_target.status);
+    values (v_actor_id, coalesce((select display_name from public.app_users where id = v_actor_id), 'Administrador Directo'), 'Usuario creado', 'Usuario: ' || v_target.username, '', v_target.username, 'Perfil de usuario creado.', v_target.status);
 
     return jsonb_build_object('ok', true, 'profile', public.app_user_json(v_target.id));
   end if;
@@ -712,7 +786,7 @@ begin
   insert into public.audit_log (user_id, legacy_user, action, changed_field, old_value, new_value, comment, status)
   values (
     v_actor_id,
-    (select display_name from public.app_users where id = v_actor_id),
+    coalesce((select display_name from public.app_users where id = v_actor_id), 'Administrador Directo'),
     'Usuario editado',
     'Usuario: ' || v_target.username,
     to_jsonb(v_existing)::text,
@@ -733,11 +807,12 @@ set search_path = public
 as $$
 declare
   v_actor_id uuid := public.app_admin_user_guard(p_token);
+  v_direct_admin boolean := public.app_is_direct_admin(p_token);
   v_user public.app_users%rowtype;
   v_next_status text;
   v_active_admins integer;
 begin
-  if v_actor_id is null then
+  if v_actor_id is null and not v_direct_admin then
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
 
@@ -775,7 +850,7 @@ begin
   insert into public.audit_log (user_id, legacy_user, action, changed_field, old_value, new_value, comment, status)
   values (
     v_actor_id,
-    (select display_name from public.app_users where id = v_actor_id),
+    coalesce((select display_name from public.app_users where id = v_actor_id), 'Administrador Directo'),
     case when v_next_status = 'Activo' then 'Activación de usuario' else 'Desactivación de usuario' end,
     'Usuario: ' || v_user.username,
     case when v_next_status = 'Activo' then 'Inactivo' else 'Activo' end,
@@ -796,11 +871,12 @@ set search_path = public
 as $$
 declare
   v_actor_id uuid := public.app_admin_user_guard(p_token);
+  v_direct_admin boolean := public.app_is_direct_admin(p_token);
   v_user public.app_users%rowtype;
   v_next_blocked boolean;
   v_active_admins integer;
 begin
-  if v_actor_id is null then
+  if v_actor_id is null and not v_direct_admin then
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
 
@@ -839,7 +915,7 @@ begin
   insert into public.audit_log (user_id, legacy_user, action, changed_field, old_value, new_value, comment, status)
   values (
     v_actor_id,
-    (select display_name from public.app_users where id = v_actor_id),
+    coalesce((select display_name from public.app_users where id = v_actor_id), 'Administrador Directo'),
     case when v_next_blocked then 'Bloqueo de usuario' else 'Desbloqueo de usuario' end,
     'Usuario: ' || v_user.username,
     case when v_next_blocked then 'No' else 'Sí' end,
@@ -865,9 +941,10 @@ set search_path = public
 as $$
 declare
   v_actor_id uuid := public.app_admin_user_guard(p_token);
+  v_direct_admin boolean := public.app_is_direct_admin(p_token);
   v_user public.app_users%rowtype;
 begin
-  if v_actor_id is null then
+  if v_actor_id is null and not v_direct_admin then
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
 
@@ -897,7 +974,7 @@ begin
   insert into public.audit_log (user_id, legacy_user, action, changed_field, old_value, new_value, comment, status)
   values (
     v_actor_id,
-    (select display_name from public.app_users where id = v_actor_id),
+    coalesce((select display_name from public.app_users where id = v_actor_id), 'Administrador Directo'),
     'Restablecimiento de contraseña',
     'Usuario: ' || v_user.username,
     '',
@@ -921,7 +998,7 @@ create policy "app_users_select_session"
 on public.app_users
 for select
 to anon
-using (public.current_app_user_id() is not null);
+using (public.app_is_direct_admin(public.app_request_token()) or public.current_app_user_id() is not null);
 
 drop policy if exists "incidents_select_session" on public.incidents;
 create policy "incidents_select_session"
@@ -936,9 +1013,12 @@ on public.incidents
 for insert
 to anon
 with check (
-  created_by = public.current_app_user_id()
-  and updated_by = public.current_app_user_id()
-  and public.current_app_role() in ('Administrador', 'Supervisor', 'Auditor')
+  public.current_app_role() = 'Administrador'
+  or (
+    created_by = public.current_app_user_id()
+    and updated_by = public.current_app_user_id()
+    and public.current_app_role() in ('Supervisor', 'Auditor')
+  )
 );
 
 drop policy if exists "incidents_update_session" on public.incidents;
@@ -954,12 +1034,15 @@ using (
   )
 )
 with check (
-  updated_by = public.current_app_user_id()
-  and (
-    public.current_app_role() in ('Administrador', 'Supervisor')
-    or (
-      public.current_app_role() = 'Auditor'
-      and (created_by = public.current_app_user_id() or assigned_to = public.current_app_user_id())
+  public.current_app_role() = 'Administrador'
+  or (
+    updated_by = public.current_app_user_id()
+    and (
+      public.current_app_role() = 'Supervisor'
+      or (
+        public.current_app_role() = 'Auditor'
+        and (created_by = public.current_app_user_id() or assigned_to = public.current_app_user_id())
+      )
     )
   )
 );
@@ -984,8 +1067,11 @@ on public.audit_log
 for insert
 to anon
 with check (
-  user_id = public.current_app_user_id()
-  and public.current_app_role() in ('Administrador', 'Supervisor', 'Auditor')
+  public.current_app_role() = 'Administrador'
+  or (
+    user_id = public.current_app_user_id()
+    and public.current_app_role() in ('Supervisor', 'Auditor')
+  )
 );
 
 drop policy if exists "catalogs_select_session" on public.catalogs;
@@ -1034,6 +1120,9 @@ grant usage, select on all sequences in schema public to anon;
 
 grant execute on function public.current_app_user_id() to anon;
 grant execute on function public.current_app_role() to anon;
+grant execute on function public.app_request_token() to anon;
+grant execute on function public.app_is_direct_admin(text) to anon;
+grant execute on function public.app_direct_admin_profile() to anon;
 grant execute on function public.app_login(text, text) to anon;
 grant execute on function public.app_validate_session(text) to anon;
 grant execute on function public.app_logout(text) to anon;
@@ -1101,21 +1190,8 @@ insert into public.catalogs (category, value) values
   ('Acción tomada', 'Validación documental')
 on conflict do nothing;
 
-insert into public.app_users (username, display_name, role, status, must_change_password)
-select 'R-Matos', 'Roldany Matos', 'Administrador', 'Activo', false
-where not exists (select 1 from public.app_users where lower(username) = 'r-matos');
+delete from public.app_sessions;
+delete from public.app_users;
 
-update public.app_users
-   set display_name = 'Roldany Matos',
-       role = 'Administrador',
-       status = 'Activo',
-       password_hash = 'sha256$b08a2298d5f57b335a1211c365e264fd$e45c787e533c6019f7b1e1fd69c9f45f8d80316acfd6d586ac1a9763f37dee78',
-       password_plain_temp = null,
-       failed_attempts = 0,
-       blocked = false,
-       must_change_password = false,
-       updated_at = now()
- where lower(username) = 'r-matos';
-
--- Solo R-Matos queda como administrador maestro. La clave inicial se guarda como hash
--- y se migra automaticamente a pgcrypto crypt() en el primer login correcto.
+-- Modo temporal: la app entra como Administrador Directo sin usuarios iniciales.
+-- Crea el usuario real desde el modulo Usuarios y luego se puede reactivar el login.

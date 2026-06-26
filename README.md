@@ -6,9 +6,9 @@ Aplicación web para gestionar incidencias de auditoría con **Supabase** como b
 
 - Frontend: Vite + JavaScript
 - Base de datos: Supabase Postgres
-- Login: usuario y contraseña propios de la app
+- Login: desactivado temporalmente para arranque administrador
 - Hosting: Cloudflare Pages
-- Seguridad: RLS activo en tablas públicas con sesión interna por token
+- Seguridad: RLS activo en tablas públicas con token temporal de administrador directo
 
 ## Estructura
 
@@ -29,12 +29,14 @@ Aplicación web para gestionar incidencias de auditoría con **Supabase** como b
 supabase/schema.sql
 ```
 
-4. Entra con el usuario administrador maestro `R-Matos`.
-5. Cambia la clave desde el módulo Usuarios cuando necesites rotarla.
+4. Abre la app. Entrará directo al módulo Usuarios como `Administrador Directo`.
+5. Crea el usuario real que usará la app cuando se reactive el login.
 
 ## Usuarios
 
-El script inicial solo crea el administrador maestro `R-Matos`. Los demás usuarios se crean desde el módulo Usuarios dentro de la app. La pantalla de login solo pide `Usuario` y `Contraseña`.
+El script temporal no crea usuarios iniciales y limpia `public.app_users` para empezar desde cero. La app entra sin pantalla de login como `Administrador Directo` para que puedas crear el primer usuario desde el módulo Usuarios.
+
+No vuelvas a ejecutar `supabase/schema.sql` después de crear usuarios reales hasta reactivar el login, porque este modo temporal vuelve a dejar la tabla de usuarios vacía.
 
 La tabla `public.app_users` guarda los accesos propios de la app: usuario, hash de contraseña, nombre, rol, estado, último acceso, intentos fallidos, bloqueo y cambio obligatorio de contraseña.
 

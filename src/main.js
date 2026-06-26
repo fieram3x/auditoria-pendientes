@@ -13,6 +13,8 @@ const YES_NO = ["No", "Sí"];
 const SLA_DAYS = { "Crítica": 1, Critica: 1, Alta: 2, Media: 3, Baja: 5 };
 const APP_SESSION_STORAGE_KEY = "auditoriaPendientes.session";
 const SESSION_HEADER = "x-app-session-token";
+const DIRECT_ADMIN_MODE = true;
+const DIRECT_ADMIN_TOKEN = "direct-admin-bootstrap";
 const USER_COLUMNS = "id, username, display_name, role, status, hotel, department, last_access_at, failed_attempts, blocked, must_change_password, created_at, updated_at";
 const PASSWORD_MASK = "********";
 const CATALOG_DEFAULTS = {
@@ -29,6 +31,22 @@ const CATALOG_DEFAULTS = {
 
 const app = document.querySelector("#app");
 let supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createAppClient() : null;
+
+const DIRECT_ADMIN_PROFILE = {
+  id: null,
+  username: "admin-directo",
+  display_name: "Administrador Directo",
+  role: "Administrador",
+  status: "Activo",
+  hotel: null,
+  department: null,
+  last_access_at: null,
+  failed_attempts: 0,
+  blocked: false,
+  must_change_password: false,
+  created_at: null,
+  updated_at: null
+};
 
 const state = {
   session: null,
@@ -143,6 +161,16 @@ function sessionToken() {
   return state.session?.token || "";
 }
 
+function directAdminSession() {
+  const expiresAt = new Date();
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+  return { token: DIRECT_ADMIN_TOKEN, expires_at: expiresAt.toISOString() };
+}
+
+function isDirectAdminSession() {
+  return DIRECT_ADMIN_MODE && sessionToken() === DIRECT_ADMIN_TOKEN;
+}
+
 function incidentId() {
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
   return `INC-${stamp}-${Math.random().toString(16).slice(2, 6).toUpperCase()}`;
@@ -242,6 +270,14 @@ function clearSessionState() {
 async function init() {
   if (!supabase) {
     renderConfigMissing();
+    return;
+  }
+  if (DIRECT_ADMIN_MODE) {
+    setInternalSession(directAdminSession());
+    state.profile = { ...DIRECT_ADMIN_PROFILE };
+    state.page = "users";
+    await loadAppData();
+    renderApp();
     return;
   }
   const savedSession = readStoredSession();
@@ -413,6 +449,14 @@ async function changeOwnPassword(currentPassword, nextPassword) {
 }
 
 async function logout() {
+  if (DIRECT_ADMIN_MODE) {
+    setInternalSession(directAdminSession());
+    state.profile = { ...DIRECT_ADMIN_PROFILE };
+    state.page = "users";
+    await loadAppData();
+    renderApp();
+    return;
+  }
   const token = sessionToken();
   try {
     if (token) await supabase.rpc("app_logout", { p_token: token });
@@ -425,6 +469,10 @@ async function logout() {
 }
 
 async function ensureProfile() {
+  if (isDirectAdminSession()) {
+    state.profile = { ...DIRECT_ADMIN_PROFILE };
+    return state.profile;
+  }
   if (!sessionToken()) throw new Error("Sesión inválida.");
   const response = await requireOk(await supabase.rpc("app_validate_session", {
     p_token: sessionToken()
@@ -437,7 +485,11 @@ async function ensureProfile() {
 
 async function loadAppData() {
   state.loading = true;
-  await ensureProfile();
+  if (isDirectAdminSession()) {
+    state.profile = { ...DIRECT_ADMIN_PROFILE };
+  } else {
+    await ensureProfile();
+  }
   const [incidents, audit, profiles, catalogs] = await Promise.all([
     supabase.from("incidents").select("*").order("created_at", { ascending: false }),
     supabase.from("audit_log").select("*").order("occurred_at", { ascending: false }).limit(500),
@@ -475,7 +527,7 @@ function renderApp() {
         <div class="sidebar-footer">
           <span>${escapeHtml(state.profile?.display_name || state.profile?.username || "Usuario")}</span>
           <span>${escapeHtml(role())}</span>
-          <button class="btn ghost" id="logoutBtn">Cerrar sesión</button>
+          ${DIRECT_ADMIN_MODE ? `<span class="muted">Modo directo temporal</span>` : `<button class="btn ghost" id="logoutBtn">Cerrar sesión</button>`}
         </div>
       </aside>
       <main class="content">
@@ -497,7 +549,7 @@ function renderApp() {
       renderApp();
     });
   });
-  document.querySelector("#logoutBtn").addEventListener("click", logout);
+  document.querySelector("#logoutBtn")?.addEventListener("click", logout);
   renderPage();
 }
 
