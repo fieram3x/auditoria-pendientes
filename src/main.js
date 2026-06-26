@@ -15,6 +15,7 @@ const APP_SESSION_STORAGE_KEY = "auditoriaPendientes.session";
 const SESSION_HEADER = "x-app-session-token";
 const USER_COLUMNS = "id, username, display_name, role, status, last_access_at, failed_attempts, blocked, must_change_password, created_at, updated_at";
 const PASSWORD_MASK = "********";
+const CHART_COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#ef4444", "#8b5cf6", "#0f766e", "#64748b"];
 const CATALOG_DEFAULTS = {
   División: ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"],
   Departamento: ["Recepción", "Reservas", "A&B", "Spa", "Contabilidad", "IT", "Club Meliá", "Auditoría Nocturna", "Auditoría Diurna"],
@@ -596,6 +597,15 @@ function renderDashboard() {
       ${kpi("Responsable con más abiertas", topResponsible, "Carga operativa")}
       ${kpi("Departamento con más incidencias", topDepartment, "Concentración")}
     </div>
+    <div class="dashboard-visuals">
+      ${trendPanel("Tendencia mensual", rows)}
+      ${donutPanel("Cumplimiento SLA", slaMet, rows.length, "En SLA", "Fuera SLA", "#16a34a")}
+      ${donutPanel("Cierre de incidencias", closed.length, rows.length, "Cerradas", "Abiertas", "#2563eb")}
+    </div>
+    <div class="dashboard-visuals dashboard-visuals-secondary">
+      ${statusPanel(rows)}
+      ${priorityPanel(rows)}
+    </div>
     <div class="charts">
       ${barPanel("Incidencias por división", rows, "hotel")}
       ${barPanel("Incidencias por departamento", rows, "department")}
@@ -620,6 +630,146 @@ function topValue(rows, key) {
     counts.set(value, (counts.get(value) || 0) + 1);
   });
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+function countBy(rows, key, labels = []) {
+  const counts = new Map();
+  rows.forEach((row) => {
+    const value = normalize(row[key]) || "Sin dato";
+    counts.set(value, (counts.get(value) || 0) + 1);
+  });
+  if (labels.length) return labels.map((label) => [label, counts.get(label) || 0]);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+function monthKey(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function recentMonths(count = 6) {
+  const formatter = new Intl.DateTimeFormat("es-DO", { month: "short" });
+  return [...Array(count)].map((_, index) => {
+    const date = new Date();
+    date.setDate(1);
+    date.setMonth(date.getMonth() - (count - index - 1));
+    return {
+      key: monthKey(date),
+      label: formatter.format(date).replace(".", "")
+    };
+  });
+}
+
+function trendPanel(title, rows) {
+  const months = recentMonths(6);
+  const values = months.map((month) => rows.filter((row) => monthKey(row.created_at) === month.key).length);
+  const max = Math.max(1, ...values);
+  const width = 360;
+  const height = 170;
+  const left = 34;
+  const bottom = 138;
+  const chartWidth = 292;
+  const chartHeight = 92;
+  const step = values.length > 1 ? chartWidth / (values.length - 1) : chartWidth;
+  const points = values.map((value, index) => {
+    const x = left + index * step;
+    const y = bottom - (value / max) * chartHeight;
+    return [x, y];
+  });
+  const path = points.map(([x, y], index) => `${index ? "L" : "M"} ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  const area = `${path} L ${points.at(-1)?.[0].toFixed(1) || left} ${bottom} L ${left} ${bottom} Z`;
+  return `
+    <section class="panel chart-panel chart-wide">
+      <div class="chart-head">
+        <h3>${escapeHtml(title)}</h3>
+        <span>${escapeHtml(rows.length)} total</span>
+      </div>
+      <svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
+        <path class="line-area" d="${area}"></path>
+        <path class="line-path" d="${path}"></path>
+        ${[0, 0.5, 1].map((ratio) => {
+          const y = bottom - ratio * chartHeight;
+          return `<line class="grid-line" x1="${left}" x2="${left + chartWidth}" y1="${y}" y2="${y}"></line>`;
+        }).join("")}
+        ${points.map(([x, y], index) => `
+          <circle class="line-point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4"></circle>
+          <text class="line-value" x="${x.toFixed(1)}" y="${(y - 10).toFixed(1)}">${values[index]}</text>
+          <text class="line-label" x="${x.toFixed(1)}" y="158">${escapeHtml(months[index].label)}</text>
+        `).join("")}
+      </svg>
+    </section>
+  `;
+}
+
+function donutPanel(title, value, total, positiveLabel, negativeLabel, color) {
+  const percent = Number(pct(value, total));
+  const remaining = Math.max(0, total - value);
+  return `
+    <section class="panel chart-panel donut-panel">
+      <div class="chart-head">
+        <h3>${escapeHtml(title)}</h3>
+        <span>${escapeHtml(total)} total</span>
+      </div>
+      <div class="donut-wrap">
+        <div class="donut" style="--pct:${percent};--donut-color:${color};"><span>${percent.toFixed(1)}%</span></div>
+        <div class="donut-legend">
+          <span><b style="background:${color};"></b>${escapeHtml(positiveLabel)}: ${escapeHtml(value)}</span>
+          <span><b></b>${escapeHtml(negativeLabel)}: ${escapeHtml(remaining)}</span>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function statusPanel(rows) {
+  const items = countBy(rows, "status", STATUSES);
+  const total = Math.max(1, rows.length);
+  return `
+    <section class="panel chart-panel">
+      <div class="chart-head">
+        <h3>Distribución por estatus</h3>
+        <span>${escapeHtml(rows.length)} total</span>
+      </div>
+      <div class="status-stack">
+        ${items.map(([label, value], index) => `
+          <span title="${escapeHtml(label)}: ${escapeHtml(value)}" style="width:${(value / total) * 100}%;background:${CHART_COLORS[index % CHART_COLORS.length]};"></span>
+        `).join("")}
+      </div>
+      <div class="status-list">
+        ${items.map(([label, value], index) => `
+          <div>
+            <span><b style="background:${CHART_COLORS[index % CHART_COLORS.length]};"></b>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function priorityPanel(rows) {
+  const items = countBy(rows, "priority", PRIORITIES);
+  const max = Math.max(1, ...items.map(([, value]) => value));
+  return `
+    <section class="panel chart-panel">
+      <div class="chart-head">
+        <h3>Prioridad</h3>
+        <span>Volumen por nivel</span>
+      </div>
+      <div class="vertical-chart">
+        ${items.map(([label, value], index) => `
+          <div class="vertical-item">
+            <span>${escapeHtml(value)}</span>
+            <div class="vertical-track">
+              <div class="vertical-fill" style="height:${(value / max) * 100}%;background:${CHART_COLORS[index % CHART_COLORS.length]};"></div>
+            </div>
+            <b>${escapeHtml(label)}</b>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function barPanel(title, rows, key) {
