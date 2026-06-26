@@ -676,8 +676,6 @@ declare
   v_display_name text := trim(coalesce(p_user ->> 'display_name', ''));
   v_role text := coalesce(nullif(p_user ->> 'role', ''), 'Auditor');
   v_status text := coalesce(nullif(p_user ->> 'status', ''), 'Activo');
-  v_hotel text := nullif(p_user ->> 'hotel', '');
-  v_department text := nullif(p_user ->> 'department', '');
   v_blocked boolean := coalesce((p_user ->> 'blocked')::boolean, false);
   v_must_change boolean := coalesce((p_user ->> 'must_change_password')::boolean, true);
   v_password text := coalesce(p_user ->> 'password', '');
@@ -719,8 +717,6 @@ begin
       display_name,
       role,
       status,
-      hotel,
-      department,
       blocked,
       must_change_password
     )
@@ -730,8 +726,6 @@ begin
       v_display_name,
       v_role,
       v_status,
-      v_hotel,
-      v_department,
       v_blocked,
       v_must_change
     )
@@ -775,8 +769,8 @@ begin
          display_name = v_display_name,
          role = v_role,
          status = v_status,
-         hotel = v_hotel,
-         department = v_department,
+         hotel = null,
+         department = null,
          blocked = v_blocked,
          must_change_password = v_must_change,
          updated_at = now()

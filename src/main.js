@@ -15,7 +15,7 @@ const APP_SESSION_STORAGE_KEY = "auditoriaPendientes.session";
 const SESSION_HEADER = "x-app-session-token";
 const DIRECT_ADMIN_MODE = true;
 const DIRECT_ADMIN_TOKEN = "direct-admin-bootstrap";
-const USER_COLUMNS = "id, username, display_name, role, status, hotel, department, last_access_at, failed_attempts, blocked, must_change_password, created_at, updated_at";
+const USER_COLUMNS = "id, username, display_name, role, status, last_access_at, failed_attempts, blocked, must_change_password, created_at, updated_at";
 const PASSWORD_MASK = "********";
 const CATALOG_DEFAULTS = {
   Hotel: ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"],
@@ -70,9 +70,7 @@ const state = {
   userFilters: {
     search: "",
     role: "",
-    status: "",
-    hotel: "",
-    department: ""
+    status: ""
   }
 };
 
@@ -846,7 +844,7 @@ function renderUsers() {
     <div class="excel-wrap">
       <div class="excel-scroller">
         <table class="excel">
-          <thead><tr><th>Usuario</th><th>Password</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Intentos fallidos</th><th>Bloqueado</th><th>Debe cambiar password</th><th>Hotel</th><th>Departamento</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Usuario</th><th>Password</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Intentos fallidos</th><th>Bloqueado</th><th>Debe cambiar password</th><th>Acciones</th></tr></thead>
           <tbody>
             ${rows.map((row) => `
               <tr>
@@ -859,8 +857,6 @@ function renderUsers() {
                 <td>${escapeHtml(row.failed_attempts ?? 0)}</td>
                 <td>${badge(boolText(Boolean(row.blocked)))}</td>
                 <td>${badge(boolText(Boolean(row.must_change_password)))}</td>
-                <td>${escapeHtml(row.hotel || "")}</td>
-                <td>${escapeHtml(row.department || "")}</td>
                 <td>
                   <div class="table-actions">
                     <button class="btn tiny" data-action="edit-user" data-id="${escapeHtml(row.id)}">Editar</button>
@@ -871,7 +867,7 @@ function renderUsers() {
                   </div>
                 </td>
               </tr>
-            `).join("") || `<tr><td colspan="12" class="empty">No hay usuarios con los filtros seleccionados.</td></tr>`}
+            `).join("") || `<tr><td colspan="10" class="empty">No hay usuarios con los filtros seleccionados.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -885,9 +881,7 @@ function filteredProfiles() {
     const text = `${row.username || ""} ${row.display_name || ""}`.toLowerCase();
     return (!f.search || text.includes(f.search.toLowerCase()))
       && (!f.role || row.role === f.role)
-      && (!f.status || row.status === f.status)
-      && (!f.hotel || row.hotel === f.hotel)
-      && (!f.department || row.department === f.department);
+      && (!f.status || row.status === f.status);
   });
 }
 
@@ -907,14 +901,8 @@ function renderUserFilters() {
       <div class="field"><label>Buscar</label><input data-user-filter="search" value="${escapeHtml(f.search)}" placeholder="Usuario o nombre"></div>
       ${select("role", "Rol", ROLES)}
       ${select("status", "Estado", PROFILE_STATUSES)}
-      ${select("hotel", "Hotel", profileDistinct("hotel"))}
-      ${select("department", "Departamento", profileDistinct("department"))}
     </div>
   `;
-}
-
-function profileDistinct(fieldName) {
-  return [...new Set(state.profiles.map((row) => normalize(row[fieldName])).filter(Boolean))].sort();
 }
 
 function renderCatalogs() {
@@ -1107,7 +1095,7 @@ async function logUserAction(targetProfile, action, oldValue, newValue, comment)
     old_value: oldValue || "",
     new_value: newValue || "",
     comment,
-    hotel: targetProfile?.hotel || "",
+    hotel: "",
     status: targetProfile?.status || ""
   });
 }
@@ -1128,8 +1116,6 @@ function openUserModal(existing = null) {
       ${field("status", "Estado", existing?.status || "Activo", "select", PROFILE_STATUSES)}
       ${field("blocked", "Bloqueado", boolText(Boolean(existing?.blocked)), "select", YES_NO)}
       ${field("must_change_password", "Debe cambiar password", boolText(existing ? Boolean(existing.must_change_password) : true), "select", YES_NO)}
-      ${field("hotel", "Hotel", existing?.hotel || "", "select", getCatalog("Hotel"))}
-      ${field("department", "Departamento", existing?.department || "", "select", getCatalog("Departamento"))}
       <button class="btn primary form-full" type="submit">${isEdit ? "Guardar cambios" : "Crear usuario"}</button>
     </form>
   `;
@@ -1159,9 +1145,7 @@ async function saveProfile(payload, existing = null) {
     role: payload.role,
     status: payload.status,
     blocked: boolValue(payload.blocked),
-    must_change_password: boolValue(payload.must_change_password),
-    hotel: payload.hotel || null,
-    department: payload.department || null
+    must_change_password: boolValue(payload.must_change_password)
   };
   if (!existing) userPayload.password = payload.password;
   const response = await requireOk(await supabase.rpc("app_save_user", {

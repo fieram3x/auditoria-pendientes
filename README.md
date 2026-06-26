@@ -40,6 +40,8 @@ No vuelvas a ejecutar `supabase/schema.sql` después de crear usuarios reales ha
 
 La tabla `public.app_users` guarda los accesos propios de la app: usuario, hash de contraseña, nombre, rol, estado, último acceso, intentos fallidos, bloqueo y cambio obligatorio de contraseña.
 
+Los usuarios son globales. No se asigna hotel ni departamento al perfil; el acceso a hoteles y departamentos lo controla el rol y la operación normal de la app.
+
 Las contraseñas se guardan como hash. El frontend nunca muestra ni almacena contraseñas reales.
 
 ## Variables de Cloudflare Pages
@@ -81,7 +83,7 @@ pnpm build
 - Detalle, comentario, edición, cierre formal y reapertura.
 - Kanban por estatus.
 - Bitácora general.
-- Usuarios con filtros, roles, activación, bloqueo, restablecimiento de contraseña y registro en bitácora.
+- Usuarios globales con filtros, roles, activación, bloqueo, restablecimiento de contraseña y registro en bitácora.
 - Catálogos editables para administradores y supervisores.
 
 ## Migración desde Google Sheets
@@ -145,4 +147,4 @@ Roles operativos:
 - `Auditor`: crea, comenta y edita incidencias propias/asignadas.
 - `Consulta`: solo lectura.
 
-El módulo Usuarios administra accesos, roles, activación, bloqueo y restablecimiento de contraseña. Los cambios quedan registrados en bitácora.
+El módulo Usuarios administra accesos globales, roles, activación, bloqueo y restablecimiento de contraseña. No usa hotel ni departamento en el perfil. Los cambios quedan registrados en bitácora.
