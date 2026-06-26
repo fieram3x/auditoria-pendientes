@@ -38,7 +38,7 @@ El script no crea usuarios iniciales ni elimina usuarios existentes. Los usuario
 
 La tabla `public.app_users` guarda los accesos propios de la app: usuario, hash de contraseña, nombre, rol, estado, último acceso, intentos fallidos, bloqueo y cambio obligatorio de contraseña.
 
-Los usuarios son globales. No se asigna hotel ni departamento al perfil; el acceso a hoteles y departamentos lo controla el rol y la operación normal de la app. Cuando se crean con `Debe cambiar password = Sí`, deben cambiar la contraseña en su primer inicio de sesión.
+Los usuarios son globales. No se asigna división ni departamento al perfil; el acceso a divisiones y departamentos lo controla el rol y la operación normal de la app. Cuando se crean con `Debe cambiar password = Sí`, deben cambiar la contraseña en su primer inicio de sesión.
 
 Las contraseñas se guardan como hash. El frontend nunca muestra ni almacena contraseñas reales.
 
@@ -92,10 +92,11 @@ Mapeo sugerido:
 
 - `ID` -> `id`
 - `Fecha Creación` -> `created_at`
-- `Hotel` -> `hotel`
+- `División` -> `hotel`
 - `Departamento` -> `department`
 - `Área Responsable` -> `responsible_area`
 - `Tipo de Incidencia` -> `incident_type`
+- `Asunto` -> `subject`
 - `Impacto` -> `impact`
 - `Prioridad` -> `priority`
 - `Estatus` -> `status`
@@ -106,7 +107,6 @@ Mapeo sugerido:
 - `Causa raíz` -> `root_cause`
 - `Acción tomada` -> `action_taken`
 - `Motivo de cierre` -> `close_reason`
-- `Evidencia URL` -> `evidence_url`
 - `Comentario final` -> `final_comment`
 - `Fecha Cierre` -> `closed_at`
 - `Última Actualización` -> `updated_at`
@@ -123,7 +123,7 @@ Mapeo sugerido:
 - `Valor anterior` -> `old_value`
 - `Valor nuevo` -> `new_value`
 - `Comentario` -> `comment`
-- `Hotel` -> `hotel`
+- `División` -> `hotel`
 - `Estatus` -> `status`
 
 ## Seguridad
@@ -145,4 +145,4 @@ Roles operativos:
 - `Auditor`: crea, comenta y edita incidencias propias/asignadas.
 - `Consulta`: solo lectura.
 
-El módulo Usuarios administra accesos globales, roles, activación, bloqueo y restablecimiento de contraseña. No usa hotel ni departamento en el perfil. Los cambios quedan registrados en bitácora.
+El módulo Usuarios administra accesos globales, roles, activación, bloqueo y restablecimiento de contraseña. No usa división ni departamento en el perfil. Los cambios quedan registrados en bitácora.

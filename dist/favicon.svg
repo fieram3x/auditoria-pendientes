@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Auditoria Pendientes">
+  <defs>
+    <linearGradient id="bg" x1="10" x2="54" y1="8" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <path d="M32 8l19 7v15c0 12.7-7.6 22.7-19 26-11.4-3.3-19-13.3-19-26V15l19-7z" fill="url(#bg)"/>
+  <path d="M23 31.5l6 6L42 23" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M21 44h22" stroke="#bfdbfe" stroke-width="4" stroke-linecap="round"/>
+  <text x="32" y="24" fill="#dbeafe" font-family="Arial, sans-serif" font-size="9" font-weight="700" text-anchor="middle">AP</text>
+</svg>

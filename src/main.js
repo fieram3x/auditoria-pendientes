@@ -16,7 +16,7 @@ const SESSION_HEADER = "x-app-session-token";
 const USER_COLUMNS = "id, username, display_name, role, status, last_access_at, failed_attempts, blocked, must_change_password, created_at, updated_at";
 const PASSWORD_MASK = "********";
 const CATALOG_DEFAULTS = {
-  Hotel: ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"],
+  División: ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"],
   Departamento: ["Recepción", "Reservas", "A&B", "Spa", "Contabilidad", "IT", "Club Meliá", "Auditoría Nocturna", "Auditoría Diurna"],
   "Área Responsable": ["Operaciones", "Finanzas", "Contabilidad", "Revenue", "Sistemas", "Auditoría"],
   "Tipo de Incidencia": ["Cobro no realizado", "Routing incorrecto", "Check-in mal procesado", "Rate Code incorrecto", "Factura no volcada a SAP", "Diferencia POS vs PMS", "Resort Credit incorrecto", "HTC incorrecto", "Falta de soporte", "Incidencia IT"],
@@ -190,8 +190,13 @@ function statusOptionsFor(row) {
 }
 
 function getCatalog(category) {
-  const values = state.catalogs.filter((row) => row.category === category).map((row) => row.value).filter(Boolean);
+  const categories = category === "División" ? ["División", "Hotel"] : [category];
+  const values = state.catalogs.filter((row) => categories.includes(row.category)).map((row) => row.value).filter(Boolean);
   return values.length ? [...new Set(values)].sort() : CATALOG_DEFAULTS[category] || [];
+}
+
+function categoryLabel(category) {
+  return category === "Hotel" ? "División" : category;
 }
 
 function optionList(values, selected = "") {
@@ -523,7 +528,7 @@ function renderPage() {
 function filteredIncidents() {
   return state.incidents.filter((row) => {
     const f = state.filters;
-    const text = `${row.id} ${row.hotel} ${row.department} ${row.incident_type} ${row.description} ${row.responsible}`.toLowerCase();
+    const text = `${row.id} ${row.hotel} ${row.department} ${row.subject} ${row.incident_type} ${row.description} ${row.responsible}`.toLowerCase();
     return (!f.hotel || row.hotel === f.hotel)
       && (!f.department || row.department === f.department)
       && (!f.priority || row.priority === f.priority)
@@ -556,13 +561,13 @@ function renderFilters() {
   `;
   return `
     <div class="filters">
-      ${select("hotel", "Hotel", getDistinct("hotel"))}
+      ${select("hotel", "División", getDistinct("hotel"))}
       ${select("department", "Departamento", getDistinct("department"))}
       ${select("type", "Tipo", getDistinct("incident_type"))}
       ${select("priority", "Prioridad", PRIORITIES)}
       ${select("status", "Estatus", STATUSES)}
       ${select("responsible", "Responsable", getDistinct("responsible"))}
-      <div class="field"><label>Buscar</label><input data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, descripción..."></div>
+      <div class="field"><label>Buscar</label><input data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, asunto, descripción..."></div>
     </div>
   `;
 }
@@ -595,7 +600,7 @@ function renderDashboard() {
       ${kpi("Departamento con más incidencias", topDepartment, "Concentración")}
     </div>
     <div class="charts">
-      ${barPanel("Incidencias por hotel", rows, "hotel")}
+      ${barPanel("Incidencias por división", rows, "hotel")}
       ${barPanel("Incidencias por departamento", rows, "department")}
       ${barPanel("Incidencias por prioridad", rows, "priority")}
       ${barPanel("Incidencias por estatus", rows, "status")}
@@ -666,8 +671,9 @@ function excelTable(rows) {
   const columns = [
     ["id", "ID"],
     ["created_at", "Fecha"],
-    ["hotel", "Hotel"],
+    ["hotel", "División"],
     ["department", "Departamento"],
+    ["subject", "Asunto"],
     ["incident_type", "Tipo"],
     ["priority", "Prioridad"],
     ["status", "Estatus"],
@@ -703,6 +709,7 @@ function cellValue(row, key) {
     const info = slaInfo(row);
     return badge(info.label, info.cls);
   }
+  if (key === "subject") return escapeHtml(short(row.subject, 90));
   if (key === "description") return escapeHtml(short(row.description, 130));
   return escapeHtml(row[key] || "");
 }
@@ -710,10 +717,11 @@ function cellValue(row, key) {
 function selectedPanel(row) {
   const info = slaInfo(row);
   return `
-    <h3>${escapeHtml(row.id)}</h3>
+    <h3>${escapeHtml(row.subject || row.id)}</h3>
     <div class="selected-card">
       <div>${badge(row.priority)} ${badge(row.status)} ${badge(info.label, info.cls)}</div>
-      <strong>${escapeHtml(row.hotel || "Sin hotel")}</strong>
+      <span class="muted">${escapeHtml(row.id)}</span>
+      <strong>${escapeHtml(row.hotel || "Sin división")}</strong>
       <span class="muted">${escapeHtml(row.department || "Sin departamento")} · Responsable: ${escapeHtml(row.responsible || "Sin asignar")}</span>
       <p>${escapeHtml(row.description || "")}</p>
     </div>
@@ -744,7 +752,7 @@ function renderKanban() {
                 <button class="row-button" data-select="${escapeHtml(row.id)}" data-page-link="incidents">${escapeHtml(row.id)}</button>
                 <span class="muted">${escapeHtml(row.hotel || "")} · ${escapeHtml(row.department || "")}</span>
                 <span>${badge(row.priority)} ${badge(slaInfo(row).label, slaInfo(row).cls)}</span>
-                <span>${escapeHtml(short(row.description, 95))}</span>
+                <strong>${escapeHtml(short(row.subject || row.description, 95))}</strong>
                 <select data-status-change="${escapeHtml(row.id)}" ${!canEditIncident(row, "status") && !canEditIncident(row, "reopen") ? "disabled" : ""}>
                   ${optionList(statusOptionsFor(row), row.status)}
                 </select>
@@ -871,7 +879,7 @@ function renderCatalogs() {
         <table class="excel">
           <thead><tr><th>Categoría</th><th>Valor</th></tr></thead>
           <tbody>
-            ${state.catalogs.map((row) => `<tr><td>${escapeHtml(row.category)}</td><td>${escapeHtml(row.value)}</td></tr>`).join("")}
+            ${state.catalogs.map((row) => `<tr><td>${escapeHtml(categoryLabel(row.category))}</td><td>${escapeHtml(row.value)}</td></tr>`).join("")}
           </tbody>
         </table>
       </div>
@@ -966,7 +974,7 @@ function openIncidentModal(row = null) {
   const isEdit = Boolean(row);
   const body = `
     <form id="incidentForm" class="form-grid">
-      ${field("hotel", "Hotel", row?.hotel, "select", getCatalog("Hotel"))}
+      ${field("hotel", "División", row?.hotel, "select", getCatalog("División"))}
       ${field("department", "Departamento", row?.department, "select", getCatalog("Departamento"))}
       ${field("responsible_area", "Área responsable", row?.responsible_area, "select", getCatalog("Área Responsable"))}
       ${field("incident_type", "Tipo de incidencia", row?.incident_type, "select", getCatalog("Tipo de Incidencia"))}
@@ -975,8 +983,8 @@ function openIncidentModal(row = null) {
       ${field("status", "Estatus", row?.status || "Pendiente", "select", STATUSES)}
       ${field("responsible", "Responsable", row?.responsible)}
       ${field("due_at", "Fecha compromiso", row?.due_at || dueDate(row?.priority || "Media"), "date")}
+      ${field("subject", "Asunto", row?.subject, "text", [], "form-full")}
       ${field("description", "Descripción", row?.description, "textarea", [], "form-full")}
-      ${field("evidence_url", "Evidencia URL", row?.evidence_url, "url", [], "form-full")}
       <button class="btn primary form-full" type="submit">${isEdit ? "Guardar cambios" : "Crear incidencia"}</button>
     </form>
   `;
@@ -984,8 +992,8 @@ function openIncidentModal(row = null) {
   modal.querySelector("#incidentForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = formObject(event.currentTarget);
-    if (!payload.hotel || !payload.department || !payload.incident_type || !payload.priority || !payload.description) {
-      showToast("Completa hotel, departamento, tipo, prioridad y descripción.");
+    if (!payload.hotel || !payload.department || !payload.incident_type || !payload.priority || !payload.subject || !payload.description) {
+      showToast("Completa división, departamento, tipo, prioridad, asunto y descripción.");
       return;
     }
     if (isEdit) {
@@ -1269,9 +1277,10 @@ function openDetailModal(row) {
   modalHtml(`Detalle ${row.id}`, `
     <div class="selected-card">
       <div>${badge(row.priority)} ${badge(row.status)} ${badge(slaInfo(row).label, slaInfo(row).cls)}</div>
-      <p><b>Hotel:</b> ${escapeHtml(row.hotel || "")}</p>
+      <p><b>División:</b> ${escapeHtml(row.hotel || "")}</p>
       <p><b>Departamento:</b> ${escapeHtml(row.department || "")}</p>
       <p><b>Responsable:</b> ${escapeHtml(row.responsible || "Sin asignar")}</p>
+      <p><b>Asunto:</b> ${escapeHtml(row.subject || "")}</p>
       <p><b>Descripción:</b><br>${escapeHtml(row.description || "")}</p>
       <p><b>Causa raíz:</b> ${escapeHtml(row.root_cause || "")}</p>
       <p><b>Acción tomada:</b> ${escapeHtml(row.action_taken || "")}</p>
@@ -1313,7 +1322,6 @@ function openCloseModal(row) {
       ${field("root_cause", "Causa raíz", row.root_cause, "select", getCatalog("Causa raíz"))}
       ${field("action_taken", "Acción tomada", row.action_taken, "select", getCatalog("Acción tomada"))}
       ${field("close_reason", "Motivo de cierre", row.close_reason)}
-      ${field("evidence_url", "Evidencia URL", row.evidence_url, "url")}
       ${field("final_comment", "Comentario final", row.final_comment, "textarea", [], "form-full")}
       <button class="btn primary form-full" type="submit">Cerrar incidencia</button>
     </form>
@@ -1369,7 +1377,7 @@ function openCatalogModal() {
 }
 
 function exportCsv(rows) {
-  const headers = ["ID", "Fecha", "Hotel", "Departamento", "Tipo", "Prioridad", "Estatus", "Responsable", "SLA", "Descripción"];
+  const headers = ["ID", "Fecha", "División", "Departamento", "Asunto", "Tipo", "Prioridad", "Estatus", "Responsable", "SLA", "Descripción"];
   const csvRows = [
     headers.join(","),
     ...rows.map((row) => [
@@ -1377,6 +1385,7 @@ function exportCsv(rows) {
       fmtDate(row.created_at),
       row.hotel,
       row.department,
+      row.subject,
       row.incident_type,
       row.priority,
       row.status,
