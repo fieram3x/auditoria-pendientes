@@ -238,39 +238,8 @@ as $$
   select encode(extensions.digest(coalesce(p_token, '')::text, 'sha256'::text), 'hex')
 $$;
 
-create or replace function public.app_is_direct_admin(p_token text)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select coalesce(p_token, '') = 'direct-admin-bootstrap'
-$$;
-
-create or replace function public.app_direct_admin_profile()
-returns jsonb
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select jsonb_build_object(
-    'id', null,
-    'username', 'admin-directo',
-    'display_name', 'Administrador Directo',
-    'role', 'Administrador',
-    'status', 'Activo',
-    'hotel', null,
-    'department', null,
-    'last_access_at', null,
-    'failed_attempts', 0,
-    'blocked', false,
-    'must_change_password', false,
-    'created_at', null,
-    'updated_at', null
-  )
-$$;
+drop function if exists public.app_is_direct_admin(text);
+drop function if exists public.app_direct_admin_profile();
 
 create or replace function public.app_password_matches(p_password text, p_hash text)
 returns boolean
@@ -380,10 +349,6 @@ as $$
 declare
   v_token text := public.app_request_token();
 begin
-  if public.app_is_direct_admin(v_token) then
-    return null;
-  end if;
-
   return public.app_user_id_from_token(v_token);
 end;
 $$;
@@ -396,13 +361,8 @@ security definer
 set search_path = public
 as $$
 declare
-  v_token text := public.app_request_token();
   v_role text;
 begin
-  if public.app_is_direct_admin(v_token) then
-    return 'Administrador';
-  end if;
-
   select u.role
     into v_role
   from public.app_users u
@@ -506,14 +466,6 @@ declare
   v_user_id uuid := public.app_user_id_from_token(p_token);
   v_expires_at timestamptz;
 begin
-  if public.app_is_direct_admin(p_token) then
-    return jsonb_build_object(
-      'ok', true,
-      'expires_at', now() + interval '1 year',
-      'profile', public.app_direct_admin_profile()
-    );
-  end if;
-
   if v_user_id is null then
     return jsonb_build_object('ok', false, 'reason', 'session_expired');
   end if;
@@ -652,10 +604,6 @@ declare
   v_actor_id uuid := public.app_user_id_from_token(p_token);
   v_role text;
 begin
-  if public.app_is_direct_admin(p_token) then
-    return null;
-  end if;
-
   if v_actor_id is null then
     return null;
   end if;
@@ -681,7 +629,6 @@ set search_path = public
 as $$
 declare
   v_actor_id uuid := public.app_admin_user_guard(p_token);
-  v_direct_admin boolean := public.app_is_direct_admin(p_token);
   v_existing public.app_users%rowtype;
   v_target public.app_users%rowtype;
   v_username text := trim(coalesce(p_user ->> 'username', ''));
@@ -693,7 +640,7 @@ declare
   v_password text := coalesce(p_user ->> 'password', '');
   v_active_admins integer;
 begin
-  if v_actor_id is null and not v_direct_admin then
+  if v_actor_id is null then
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
 
@@ -744,7 +691,7 @@ begin
     returning * into v_target;
 
     insert into public.audit_log (user_id, legacy_user, action, changed_field, old_value, new_value, comment, status)
-    values (v_actor_id, coalesce((select display_name from public.app_users where id = v_actor_id), 'Administrador Directo'), 'Usuario creado', 'Usuario: ' || v_target.username, '', v_target.username, 'Perfil de usuario creado.', v_target.status);
+    values (v_actor_id, (select display_name from public.app_users where id = v_actor_id), 'Usuario creado', 'Usuario: ' || v_target.username, '', v_target.username, 'Perfil de usuario creado.', v_target.status);
 
     return jsonb_build_object('ok', true, 'profile', public.app_user_json(v_target.id));
   end if;
@@ -792,7 +739,7 @@ begin
   insert into public.audit_log (user_id, legacy_user, action, changed_field, old_value, new_value, comment, status)
   values (
     v_actor_id,
-    coalesce((select display_name from public.app_users where id = v_actor_id), 'Administrador Directo'),
+    (select display_name from public.app_users where id = v_actor_id),
     'Usuario editado',
     'Usuario: ' || v_target.username,
     to_jsonb(v_existing)::text,
@@ -813,12 +760,11 @@ set search_path = public
 as $$
 declare
   v_actor_id uuid := public.app_admin_user_guard(p_token);
-  v_direct_admin boolean := public.app_is_direct_admin(p_token);
   v_user public.app_users%rowtype;
   v_next_status text;
   v_active_admins integer;
 begin
-  if v_actor_id is null and not v_direct_admin then
+  if v_actor_id is null then
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
 
@@ -856,7 +802,7 @@ begin
   insert into public.audit_log (user_id, legacy_user, action, changed_field, old_value, new_value, comment, status)
   values (
     v_actor_id,
-    coalesce((select display_name from public.app_users where id = v_actor_id), 'Administrador Directo'),
+    (select display_name from public.app_users where id = v_actor_id),
     case when v_next_status = 'Activo' then 'Activación de usuario' else 'Desactivación de usuario' end,
     'Usuario: ' || v_user.username,
     case when v_next_status = 'Activo' then 'Inactivo' else 'Activo' end,
@@ -877,12 +823,11 @@ set search_path = public
 as $$
 declare
   v_actor_id uuid := public.app_admin_user_guard(p_token);
-  v_direct_admin boolean := public.app_is_direct_admin(p_token);
   v_user public.app_users%rowtype;
   v_next_blocked boolean;
   v_active_admins integer;
 begin
-  if v_actor_id is null and not v_direct_admin then
+  if v_actor_id is null then
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
 
@@ -921,7 +866,7 @@ begin
   insert into public.audit_log (user_id, legacy_user, action, changed_field, old_value, new_value, comment, status)
   values (
     v_actor_id,
-    coalesce((select display_name from public.app_users where id = v_actor_id), 'Administrador Directo'),
+    (select display_name from public.app_users where id = v_actor_id),
     case when v_next_blocked then 'Bloqueo de usuario' else 'Desbloqueo de usuario' end,
     'Usuario: ' || v_user.username,
     case when v_next_blocked then 'No' else 'Sí' end,
@@ -947,10 +892,9 @@ set search_path = public
 as $$
 declare
   v_actor_id uuid := public.app_admin_user_guard(p_token);
-  v_direct_admin boolean := public.app_is_direct_admin(p_token);
   v_user public.app_users%rowtype;
 begin
-  if v_actor_id is null and not v_direct_admin then
+  if v_actor_id is null then
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
 
@@ -980,7 +924,7 @@ begin
   insert into public.audit_log (user_id, legacy_user, action, changed_field, old_value, new_value, comment, status)
   values (
     v_actor_id,
-    coalesce((select display_name from public.app_users where id = v_actor_id), 'Administrador Directo'),
+    (select display_name from public.app_users where id = v_actor_id),
     'Restablecimiento de contraseña',
     'Usuario: ' || v_user.username,
     '',
@@ -1004,7 +948,7 @@ create policy "app_users_select_session"
 on public.app_users
 for select
 to anon
-using (public.app_is_direct_admin(public.app_request_token()) or public.current_app_user_id() is not null);
+using (public.current_app_user_id() is not null);
 
 drop policy if exists "incidents_select_session" on public.incidents;
 create policy "incidents_select_session"
@@ -1127,8 +1071,6 @@ grant usage, select on all sequences in schema public to anon;
 grant execute on function public.current_app_user_id() to anon;
 grant execute on function public.current_app_role() to anon;
 grant execute on function public.app_request_token() to anon;
-grant execute on function public.app_is_direct_admin(text) to anon;
-grant execute on function public.app_direct_admin_profile() to anon;
 grant execute on function public.app_login(text, text) to anon;
 grant execute on function public.app_validate_session(text) to anon;
 grant execute on function public.app_logout(text) to anon;
@@ -1196,5 +1138,5 @@ insert into public.catalogs (category, value) values
   ('Acción tomada', 'Validación documental')
 on conflict do nothing;
 
--- Modo temporal: la app entra como Administrador Directo sin usuarios iniciales.
--- Este script no crea ni elimina usuarios. Crea el usuario real desde el modulo Usuarios.
+-- El script no crea ni elimina usuarios.
+-- Crea y administra usuarios desde la app con una sesion de Administrador.

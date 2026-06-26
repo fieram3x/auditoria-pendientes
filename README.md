@@ -6,9 +6,9 @@ Aplicación web para gestionar incidencias de auditoría con **Supabase** como b
 
 - Frontend: Vite + JavaScript
 - Base de datos: Supabase Postgres
-- Login: desactivado temporalmente para arranque administrador
+- Login: usuario y contraseña propios de la app
 - Hosting: Cloudflare Pages
-- Seguridad: RLS activo en tablas públicas con token temporal de administrador directo
+- Seguridad: RLS activo en tablas públicas con sesión interna por token
 
 ## Estructura
 
@@ -29,16 +29,16 @@ Aplicación web para gestionar incidencias de auditoría con **Supabase** como b
 supabase/schema.sql
 ```
 
-4. Abre la app. Entrará directo al módulo Usuarios como `Administrador Directo`.
-5. Crea el usuario real que usará la app cuando se reactive el login.
+4. Abre la app e inicia sesión con el usuario creado en el módulo Usuarios.
+5. Si el usuario tiene `Debe cambiar password = Sí`, la app pedirá cambiar la contraseña antes de entrar.
 
 ## Usuarios
 
-El script temporal no crea usuarios iniciales ni elimina usuarios existentes. La app entra sin pantalla de login como `Administrador Directo` para que puedas crear el primer usuario desde el módulo Usuarios. Solo necesitas ejecutar `supabase/schema.sql`.
+El script no crea usuarios iniciales ni elimina usuarios existentes. Los usuarios se crean desde el módulo Usuarios y luego inician sesión con `Usuario` y `Contraseña`.
 
 La tabla `public.app_users` guarda los accesos propios de la app: usuario, hash de contraseña, nombre, rol, estado, último acceso, intentos fallidos, bloqueo y cambio obligatorio de contraseña.
 
-Los usuarios son globales. No se asigna hotel ni departamento al perfil; el acceso a hoteles y departamentos lo controla el rol y la operación normal de la app.
+Los usuarios son globales. No se asigna hotel ni departamento al perfil; el acceso a hoteles y departamentos lo controla el rol y la operación normal de la app. Cuando se crean con `Debe cambiar password = Sí`, deben cambiar la contraseña en su primer inicio de sesión.
 
 Las contraseñas se guardan como hash. El frontend nunca muestra ni almacena contraseñas reales.
 
