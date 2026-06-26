@@ -34,7 +34,7 @@ supabase/schema.sql
 
 ## Usuarios
 
-La app inicia sesión con usuarios como `R-Matos`, `B-Paredes` o `F-Peña`. La pantalla de login solo pide `Usuario` y `Contraseña`.
+El script inicial solo crea el administrador maestro `R-Matos`. Los demás usuarios se crean desde el módulo Usuarios dentro de la app. La pantalla de login solo pide `Usuario` y `Contraseña`.
 
 La tabla `public.app_users` guarda los accesos propios de la app: usuario, hash de contraseña, nombre, rol, estado, último acceso, intentos fallidos, bloqueo y cambio obligatorio de contraseña.
 

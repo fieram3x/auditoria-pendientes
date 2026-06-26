@@ -1,7 +1,8 @@
 -- Auditoria Pendientes - Supabase schema
 -- Ejecutar completo en Supabase SQL Editor.
 
-create extension if not exists pgcrypto;
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 
 create table if not exists public.app_settings (
   key text primary key,
@@ -15,7 +16,7 @@ insert into public.app_settings (key, value) values
 on conflict (key) do nothing;
 
 create table if not exists public.app_users (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default extensions.gen_random_uuid(),
   username text not null,
   password_hash text,
   password_plain_temp text,
@@ -107,7 +108,7 @@ begin
 end $$;
 
 create table if not exists public.app_sessions (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default extensions.gen_random_uuid(),
   user_id uuid not null references public.app_users(id) on delete cascade,
   token_hash text not null unique,
   created_at timestamptz not null default now(),
@@ -222,7 +223,7 @@ immutable
 security definer
 set search_path = public
 as $$
-  select encode(digest(coalesce(p_token, ''), 'sha256'), 'hex')
+  select encode(extensions.digest(coalesce(p_token, '')::text, 'sha256'::text), 'hex')
 $$;
 
 create or replace function public.app_password_matches(p_password text, p_hash text)
@@ -235,8 +236,8 @@ as $$
   select case
     when nullif(p_hash, '') is null then false
     when p_hash like 'sha256$%' then
-      split_part(p_hash, '$', 3) = encode(digest(split_part(p_hash, '$', 2) || coalesce(p_password, ''), 'sha256'), 'hex')
-    else p_hash = crypt(coalesce(p_password, ''), p_hash)
+      split_part(p_hash, '$', 3) = encode(extensions.digest((split_part(p_hash, '$', 2) || coalesce(p_password, ''))::text, 'sha256'::text), 'hex')
+    else p_hash = extensions.crypt(coalesce(p_password, ''), p_hash)
   end
 $$;
 
@@ -394,14 +395,14 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'invalid_credentials');
   end if;
 
-  v_token := encode(gen_random_bytes(32), 'hex');
+  v_token := encode(extensions.gen_random_bytes(32), 'hex');
   v_expires_at := now() + (public.app_setting_int('session_minutes', 720)::text || ' minutes')::interval;
 
   update public.app_users
      set failed_attempts = 0,
          last_access_at = now(),
          password_hash = case
-           when v_migrate_plain or password_hash is null or password_hash like 'sha256$%' then crypt(coalesce(p_password, ''), gen_salt('bf'))
+           when v_migrate_plain or password_hash is null or password_hash like 'sha256$%' then extensions.crypt(coalesce(p_password, ''), extensions.gen_salt('bf'))
            else password_hash
          end,
          password_plain_temp = null,
@@ -507,7 +508,7 @@ begin
   end if;
 
   update public.app_users
-     set password_hash = crypt(p_new_password, gen_salt('bf')),
+     set password_hash = extensions.crypt(p_new_password, extensions.gen_salt('bf')),
          password_plain_temp = null,
          failed_attempts = 0,
          blocked = false,
@@ -651,7 +652,7 @@ begin
     )
     values (
       v_username,
-      crypt(v_password, gen_salt('bf')),
+      extensions.crypt(v_password, extensions.gen_salt('bf')),
       v_display_name,
       v_role,
       v_status,
@@ -875,7 +876,7 @@ begin
   end if;
 
   update public.app_users
-     set password_hash = crypt(p_new_password, gen_salt('bf')),
+     set password_hash = extensions.crypt(p_new_password, extensions.gen_salt('bf')),
          password_plain_temp = null,
          failed_attempts = 0,
          blocked = false,
@@ -1116,17 +1117,5 @@ update public.app_users
        updated_at = now()
  where lower(username) = 'r-matos';
 
-insert into public.app_users (username, display_name, role, status, must_change_password)
-select username, display_name, role, status, true
-from (values
-  ('R-Perez', 'Roldany Matos', 'Auditor', 'Activo'),
-  ('B-Paredes', 'Brayan Paredes', 'Auditor', 'Activo'),
-  ('L-German', 'Lisbet German', 'Auditor', 'Activo'),
-  ('F-Peña', 'Franyery Peña', 'Auditor', 'Activo'),
-  ('R-Martinez', 'Rafiel Martinez', 'Auditor', 'Activo'),
-  ('M-Herrera', 'Miguel Herrera', 'Auditor', 'Activo')
-) as seed(username, display_name, role, status)
-where not exists (select 1 from public.app_users u where lower(u.username) = lower(seed.username));
-
--- R-Matos queda como administrador maestro. La clave inicial se guarda como hash
+-- Solo R-Matos queda como administrador maestro. La clave inicial se guarda como hash
 -- y se migra automaticamente a pgcrypto crypt() en el primer login correcto.
