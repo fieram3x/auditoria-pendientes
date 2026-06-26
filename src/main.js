@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { PostgrestClient } from "@supabase/postgrest-js";
 import "./styles.css";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -9,17 +9,12 @@ const CLOSED = ["Resuelto", "Cerrado"];
 const PRIORITIES = ["Baja", "Media", "Alta", "Crítica"];
 const ROLES = ["Administrador", "Supervisor", "Auditor", "Consulta"];
 const PROFILE_STATUSES = ["Activo", "Inactivo"];
+const YES_NO = ["No", "Sí"];
 const SLA_DAYS = { "Crítica": 1, Critica: 1, Alta: 2, Media: 3, Baja: 5 };
-const LEGACY_LOGIN_DOMAIN = "auditoria.local";
-const LEGACY_USERS = {
-  "r-matos": { username: "R-Matos", displayName: "Roldany Matos", role: "Administrador", status: "Activo" },
-  "r-perez": { username: "R-Perez", displayName: "Roldany Matos", role: "Auditor", status: "Activo" },
-  "b-paredes": { username: "B-Paredes", displayName: "Brayan Paredes", role: "Auditor", status: "Activo" },
-  "l-german": { username: "L-German", displayName: "Lisbet German", role: "Auditor", status: "Activo" },
-  "f-pena": { username: "F-Peña", displayName: "Franyery Peña", role: "Auditor", status: "Activo" },
-  "r-martinez": { username: "R-Martinez", displayName: "Rafiel Martinez", role: "Auditor", status: "Activo" },
-  "m-herrera": { username: "M-Herrera", displayName: "Miguel Herrera", role: "Auditor", status: "Activo" }
-};
+const APP_SESSION_STORAGE_KEY = "auditoriaPendientes.session";
+const SESSION_HEADER = "x-app-session-token";
+const USER_COLUMNS = "id, username, display_name, role, status, hotel, department, last_access_at, failed_attempts, blocked, must_change_password, created_at, updated_at";
+const PASSWORD_MASK = "********";
 const CATALOG_DEFAULTS = {
   Hotel: ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"],
   Departamento: ["Recepción", "Reservas", "A&B", "Spa", "Contabilidad", "IT", "Club Meliá", "Auditoría Nocturna", "Auditoría Diurna"],
@@ -33,7 +28,7 @@ const CATALOG_DEFAULTS = {
 };
 
 const app = document.querySelector("#app");
-const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+let supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createAppClient() : null;
 
 const state = {
   session: null,
@@ -62,6 +57,20 @@ const state = {
     department: ""
   }
 };
+
+function createAppClient(token = "") {
+  const headers = {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`
+  };
+  if (token) {
+    headers[SESSION_HEADER] = token;
+  }
+  return new PostgrestClient(`${SUPABASE_URL}/rest/v1`, {
+    headers,
+    schema: "public"
+  });
+}
 
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;")
@@ -94,22 +103,44 @@ const isSupervisor = () => role() === "Supervisor";
 const canManageUsers = () => isAdmin();
 const canManageCatalogs = () => isAdmin() || isSupervisor();
 
-function resolveLoginIdentifier(value) {
-  const login = normalize(value);
-  const legacyUser = LEGACY_USERS[canonicalUser(login)];
-  if (legacyUser) return internalAccessAlias(legacyUser.username);
-  const alias = canonicalUser(login).replace(/[^a-z0-9._-]+/g, "");
-  return alias ? `${alias}@${LEGACY_LOGIN_DOMAIN}` : login;
+const boolText = (value) => value ? "Sí" : "No";
+const boolValue = (value) => ["si", "sí", "true", "1", "yes"].includes(canonicalUser(value));
+const withPasswordMask = (row) => ({ ...row, password_mask: PASSWORD_MASK });
+
+function readStoredSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(APP_SESSION_STORAGE_KEY) || "null");
+    if (!saved?.token || !saved?.expires_at) return null;
+    if (new Date(saved.expires_at).getTime() <= Date.now()) {
+      localStorage.removeItem(APP_SESSION_STORAGE_KEY);
+      return null;
+    }
+    return { token: saved.token, expires_at: saved.expires_at };
+  } catch {
+    localStorage.removeItem(APP_SESSION_STORAGE_KEY);
+    return null;
+  }
 }
 
-function internalAccessAlias(username) {
-  const alias = canonicalUser(username).replace(/[^a-z0-9._-]+/g, "");
-  return alias ? `${alias}@${LEGACY_LOGIN_DOMAIN}` : "";
+function persistSession(session) {
+  if (!session?.token) {
+    localStorage.removeItem(APP_SESSION_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(APP_SESSION_STORAGE_KEY, JSON.stringify({
+    token: session.token,
+    expires_at: session.expires_at
+  }));
 }
 
-function legacyUserFromAccessIdentifier(value) {
-  const accessIdentifier = normalize(value).toLowerCase();
-  return Object.values(LEGACY_USERS).find((user) => internalAccessAlias(user.username).toLowerCase() === accessIdentifier);
+function setInternalSession(session) {
+  state.session = session;
+  supabase = createAppClient(session?.token || "");
+  persistSession(session);
+}
+
+function sessionToken() {
+  return state.session?.token || "";
 }
 
 function incidentId() {
@@ -151,7 +182,7 @@ function canEditIncident(row, action = "edit") {
   if (action === "create" || action === "comment") return true;
   if (!["edit", "status"].includes(action)) return false;
   if (!row) return false;
-  const userId = state.session?.user?.id;
+  const userId = state.profile?.id;
   return row.created_by === userId || row.assigned_to === userId;
 }
 
@@ -184,16 +215,18 @@ async function requireOk(result, fallback = "No se pudo completar la operación.
 }
 
 function friendlyLoginError(error) {
-  const message = String(error?.message || "").toLowerCase();
-  if (message.includes("invalid login") || message.includes("invalid credentials") || message.includes("email not confirmed")) {
-    return "Usuario o contraseña incorrectos. Verifique sus datos e intente nuevamente.";
-  }
-  return "No fue posible iniciar sesión en este momento. Intente nuevamente o contacte al administrador.";
+  const reason = String(error?.reason || error?.message || "").toLowerCase();
+  if (reason.includes("inactive")) return "Usuario inactivo. Contacte al administrador.";
+  if (reason.includes("blocked")) return "Usuario bloqueado. Contacte al administrador.";
+  if (reason.includes("weak_password")) return "La nueva contraseña debe tener al menos 8 caracteres.";
+  return "Usuario o contraseña incorrectos.";
 }
 
 function friendlyAccessError(error) {
   const message = String(error?.message || "");
-  if (message.toLowerCase().includes("inactivo")) return message;
+  if (message.toLowerCase().includes("sesión")) return "La sesión venció. Inicie sesión nuevamente.";
+  if (message.toLowerCase().includes("inactivo")) return "Usuario inactivo. Contacte al administrador.";
+  if (message.toLowerCase().includes("bloqueado")) return "Usuario bloqueado. Contacte al administrador.";
   return "No fue posible cargar el sistema. Intente nuevamente o contacte al administrador.";
 }
 
@@ -211,18 +244,25 @@ async function init() {
     renderConfigMissing();
     return;
   }
-  const { data } = await supabase.auth.getSession();
-  state.session = data.session;
-  if (!state.session) {
+  const savedSession = readStoredSession();
+  if (!savedSession) {
     state.loading = false;
     renderLogin();
     return;
   }
+  setInternalSession(savedSession);
   try {
+    await ensureProfile();
+    if (state.profile?.must_change_password) {
+      state.loading = false;
+      renderPasswordChange();
+      return;
+    }
     await loadAppData();
     renderApp();
   } catch (error) {
     console.error(error);
+    setInternalSession(null);
     clearSessionState();
     renderLogin(friendlyAccessError(error));
   }
@@ -274,53 +314,125 @@ function renderLogin(error = "") {
   document.querySelector("#loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const { data, error: signError } = await supabase.auth.signInWithPassword({
-      email: resolveLoginIdentifier(form.get("login")),
-      password: String(form.get("password") || "")
-    });
-    if (signError) {
-      console.warn("Login failed", signError);
-      renderLogin(friendlyLoginError(signError));
-      return;
-    }
-    state.session = data.session;
     try {
-      await loadAppData();
-      renderApp();
+      await loginWithUsername(form.get("login"), form.get("password"));
     } catch (error) {
-      console.error(error);
-      await supabase.auth.signOut();
+      console.warn("Login failed", error);
+      setInternalSession(null);
       clearSessionState();
-      renderLogin(friendlyAccessError(error));
+      renderLogin(friendlyLoginError(error));
     }
   });
 }
 
-async function ensureProfile() {
-  const user = state.session.user;
-  const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
-  if (error) throw error;
-  if (data) {
-    state.profile = data;
-    if (data.status !== "Activo") {
-      await supabase.auth.signOut();
-      throw new Error("Tu usuario está inactivo. Contacta a un administrador.");
+function renderPasswordChange(error = "") {
+  app.innerHTML = `
+    <main class="login-shell">
+      <section class="login-card">
+        <div class="brand-row">
+          <div class="brand-mark">🛡️</div>
+          <div>
+            <h1>Cambiar contraseña</h1>
+            <p class="muted">Actualice su contraseña para continuar.</p>
+          </div>
+        </div>
+        ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
+        <form id="passwordChangeForm" class="form-grid" autocomplete="off">
+          <div class="field form-full">
+            <label>Contraseña actual</label>
+            <input name="current_password" type="password" required autocomplete="current-password">
+          </div>
+          <div class="field form-full">
+            <label>Nueva contraseña</label>
+            <input name="new_password" type="password" required autocomplete="new-password">
+          </div>
+          <div class="field form-full">
+            <label>Confirmar contraseña</label>
+            <input name="confirm_password" type="password" required autocomplete="new-password">
+          </div>
+          <button class="btn primary form-full" type="submit">Guardar contraseña</button>
+          <button class="btn ghost form-full" type="button" id="passwordLogoutBtn">Cerrar sesión</button>
+        </form>
+      </section>
+    </main>
+  `;
+  document.querySelector("#passwordLogoutBtn").addEventListener("click", logout);
+  document.querySelector("#passwordChangeForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const nextPassword = String(form.get("new_password") || "");
+    if (nextPassword !== String(form.get("confirm_password") || "")) {
+      renderPasswordChange("Las contraseñas no coinciden.");
+      return;
     }
-    await supabase.from("profiles").update({ last_access_at: nowISO() }).eq("id", user.id);
+    try {
+      await changeOwnPassword(form.get("current_password"), nextPassword);
+      showToast("Contraseña actualizada.");
+      await loadAppData();
+      renderApp();
+    } catch (changeError) {
+      console.warn("Password change failed", changeError);
+      renderPasswordChange(friendlyLoginError(changeError));
+    }
+  });
+}
+
+async function loginWithUsername(username, password) {
+  const response = await requireOk(await supabase.rpc("app_login", {
+    p_username: normalize(username),
+    p_password: String(password || "")
+  }), "No fue posible iniciar sesión.");
+  if (!response?.ok) {
+    const error = new Error(response?.reason || "invalid_credentials");
+    error.reason = response?.reason;
+    throw error;
+  }
+  setInternalSession({ token: response.token, expires_at: response.expires_at });
+  state.profile = response.profile;
+  if (response.must_change_password || response.profile?.must_change_password) {
+    renderPasswordChange();
     return;
   }
-  const legacyUser = legacyUserFromAccessIdentifier(user.email);
-  const fallbackUsername = legacyUser?.username || user.email?.split("@")[0] || "Usuario";
-  const insert = await supabase.from("profiles").insert({
-    id: user.id,
-    username: fallbackUsername,
-    display_name: legacyUser?.displayName || fallbackUsername,
-    role: legacyUser?.role === "Administrador" ? "Auditor" : legacyUser?.role || "Auditor",
-    status: legacyUser?.status || "Activo",
-    last_access_at: nowISO()
-  }).select("*").single();
-  if (insert.error) throw insert.error;
-  state.profile = insert.data;
+  await loadAppData();
+  renderApp();
+}
+
+async function changeOwnPassword(currentPassword, nextPassword) {
+  const response = await requireOk(await supabase.rpc("app_change_password", {
+    p_token: sessionToken(),
+    p_current_password: String(currentPassword || ""),
+    p_new_password: String(nextPassword || "")
+  }), "No fue posible cambiar la contraseña.");
+  if (!response?.ok) {
+    const error = new Error(response?.reason || "invalid_credentials");
+    error.reason = response?.reason;
+    throw error;
+  }
+  state.profile = response.profile;
+  setInternalSession({ token: sessionToken(), expires_at: response.expires_at || state.session?.expires_at });
+}
+
+async function logout() {
+  const token = sessionToken();
+  try {
+    if (token) await supabase.rpc("app_logout", { p_token: token });
+  } catch (error) {
+    console.warn("Logout failed", error);
+  }
+  setInternalSession(null);
+  clearSessionState();
+  renderLogin();
+}
+
+async function ensureProfile() {
+  if (!sessionToken()) throw new Error("Sesión inválida.");
+  const response = await requireOk(await supabase.rpc("app_validate_session", {
+    p_token: sessionToken()
+  }), "No fue posible validar la sesión.");
+  if (!response?.ok) throw new Error("Sesión inválida.");
+  state.profile = response.profile;
+  setInternalSession({ token: sessionToken(), expires_at: response.expires_at });
+  return state.profile;
 }
 
 async function loadAppData() {
@@ -329,12 +441,12 @@ async function loadAppData() {
   const [incidents, audit, profiles, catalogs] = await Promise.all([
     supabase.from("incidents").select("*").order("created_at", { ascending: false }),
     supabase.from("audit_log").select("*").order("occurred_at", { ascending: false }).limit(500),
-    supabase.from("profiles").select("*").order("display_name"),
+    supabase.from("app_users").select(USER_COLUMNS).order("display_name"),
     supabase.from("catalogs").select("*").order("category").order("value")
   ]);
   state.incidents = await requireOk(incidents);
   state.audit = await requireOk(audit);
-  state.profiles = await requireOk(profiles);
+  state.profiles = (await requireOk(profiles)).map(withPasswordMask);
   state.catalogs = await requireOk(catalogs);
   if (!state.selectedIncidentId && state.incidents[0]) state.selectedIncidentId = state.incidents[0].id;
   state.loading = false;
@@ -385,11 +497,7 @@ function renderApp() {
       renderApp();
     });
   });
-  document.querySelector("#logoutBtn").addEventListener("click", async () => {
-    await supabase.auth.signOut();
-    clearSessionState();
-    renderLogin();
-  });
+  document.querySelector("#logoutBtn").addEventListener("click", logout);
   renderPage();
 }
 
@@ -686,27 +794,32 @@ function renderUsers() {
     <div class="excel-wrap">
       <div class="excel-scroller">
         <table class="excel">
-          <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Hotel</th><th>Departamento</th><th>Último acceso</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Usuario</th><th>Password</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Intentos fallidos</th><th>Bloqueado</th><th>Debe cambiar password</th><th>Hotel</th><th>Departamento</th><th>Acciones</th></tr></thead>
           <tbody>
             ${rows.map((row) => `
               <tr>
                 <td>${escapeHtml(row.username || "")}</td>
+                <td>${escapeHtml(row.password_mask || PASSWORD_MASK)}</td>
                 <td>${escapeHtml(row.display_name || "")}</td>
                 <td>${badge(row.role || "Auditor")}</td>
                 <td>${badge(row.status || "Activo")}</td>
+                <td>${escapeHtml(fmtDate(row.last_access_at, true))}</td>
+                <td>${escapeHtml(row.failed_attempts ?? 0)}</td>
+                <td>${badge(boolText(Boolean(row.blocked)))}</td>
+                <td>${badge(boolText(Boolean(row.must_change_password)))}</td>
                 <td>${escapeHtml(row.hotel || "")}</td>
                 <td>${escapeHtml(row.department || "")}</td>
-                <td>${escapeHtml(fmtDate(row.last_access_at, true))}</td>
                 <td>
                   <div class="table-actions">
                     <button class="btn tiny" data-action="edit-user" data-id="${escapeHtml(row.id)}">Editar</button>
                     <button class="btn tiny" data-action="toggle-user" data-id="${escapeHtml(row.id)}">${row.status === "Activo" ? "Desactivar" : "Activar"}</button>
+                    <button class="btn tiny" data-action="toggle-blocked" data-id="${escapeHtml(row.id)}">${row.blocked ? "Desbloquear" : "Bloquear"}</button>
                     <button class="btn tiny" data-action="password-user" data-id="${escapeHtml(row.id)}">Contraseña</button>
                     <button class="btn tiny" data-action="audit-user" data-id="${escapeHtml(row.id)}">Bitácora</button>
                   </div>
                 </td>
               </tr>
-            `).join("") || `<tr><td colspan="8" class="empty">No hay usuarios con los filtros seleccionados.</td></tr>`}
+            `).join("") || `<tr><td colspan="12" class="empty">No hay usuarios con los filtros seleccionados.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -832,9 +945,9 @@ async function handleAction(action, id) {
   if (action === "new-user") openUserModal();
   if (action === "edit-user") openUserModal(profile);
   if (action === "toggle-user") await toggleUserStatus(profile);
+  if (action === "toggle-blocked") await toggleUserBlocked(profile);
   if (action === "password-user") openPasswordModal(profile);
   if (action === "audit-user") openUserAuditModal(profile);
-  if (action === "password-log") await registerPasswordReset(profile);
 }
 
 function modalHtml(title, body, footer = "") {
@@ -900,32 +1013,33 @@ function formObject(form) {
   return Object.fromEntries([...new FormData(form).entries()].map(([key, value]) => [key, normalize(value)]));
 }
 
-function activeAdminCountWith(targetId, nextRole, nextStatus) {
+function activeAdminCountWith(targetId, nextRole, nextStatus, nextBlocked = false) {
   return state.profiles.filter((profile) => {
     const roleValue = profile.id === targetId ? nextRole : profile.role;
     const statusValue = profile.id === targetId ? nextStatus : profile.status;
-    return roleValue === "Administrador" && statusValue === "Activo";
+    const blockedValue = profile.id === targetId ? nextBlocked : Boolean(profile.blocked);
+    return roleValue === "Administrador" && statusValue === "Activo" && !blockedValue;
   }).length;
 }
 
 function validateProfilePayload(payload, existing = null) {
-  if (!existing && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.id || "")) {
-    return "El ID de acceso no tiene un formato válido.";
-  }
   if (!payload.username || !payload.display_name || !payload.role || !payload.status) {
     return "Usuario, nombre, rol y estado son obligatorios.";
   }
+  if (!existing && normalize(payload.password).length < 8) return "La contraseña inicial debe tener al menos 8 caracteres.";
   if (!ROLES.includes(payload.role)) return "Selecciona un rol válido.";
   if (!PROFILE_STATUSES.includes(payload.status)) return "Selecciona un estado válido.";
   const duplicateUser = state.profiles.find((profile) =>
     profile.id !== existing?.id && canonicalUser(profile.username) === canonicalUser(payload.username)
   );
   if (duplicateUser) return "Ya existe un usuario con ese nombre de usuario.";
-  if (existing?.id === state.session?.user?.id && existing.role === "Administrador") {
+  const nextBlocked = boolValue(payload.blocked);
+  if (existing?.id === state.profile?.id && existing.role === "Administrador") {
     if (payload.status !== "Activo") return "No puedes desactivar tu propio usuario administrador.";
     if (payload.role !== "Administrador") return "No puedes quitarte el rol Administrador desde tu propia sesión.";
+    if (nextBlocked) return "No puedes bloquear tu propio usuario administrador.";
   }
-  if (existing && activeAdminCountWith(existing.id, payload.role, payload.status) < 1) {
+  if (existing && activeAdminCountWith(existing.id, payload.role, payload.status, nextBlocked) < 1) {
     return "Debe quedar al menos un administrador activo.";
   }
   return "";
@@ -934,7 +1048,7 @@ function validateProfilePayload(payload, existing = null) {
 async function logUserAction(targetProfile, action, oldValue, newValue, comment) {
   await supabase.from("audit_log").insert({
     incident_id: null,
-    user_id: state.session.user.id,
+    user_id: state.profile?.id,
     legacy_user: state.profile?.display_name || state.profile?.username || "Usuario",
     action,
     changed_field: `Usuario: ${targetProfile?.username || ""}`,
@@ -952,14 +1066,16 @@ function openUserModal(existing = null) {
     <form id="userForm" class="form-grid">
       ${!isEdit ? `
         <div class="field form-full">
-          <label>ID de acceso</label>
-          <input name="id" type="text" required placeholder="Pegue el ID de la cuenta de acceso">
+          <label>Contraseña inicial</label>
+          <input name="password" type="password" required autocomplete="new-password">
         </div>
       ` : ""}
       ${field("username", "Usuario", existing?.username || "")}
       ${field("display_name", "Nombre", existing?.display_name || "")}
       ${field("role", "Rol", existing?.role || "Auditor", "select", ROLES)}
       ${field("status", "Estado", existing?.status || "Activo", "select", PROFILE_STATUSES)}
+      ${field("blocked", "Bloqueado", boolText(Boolean(existing?.blocked)), "select", YES_NO)}
+      ${field("must_change_password", "Debe cambiar password", boolText(existing ? Boolean(existing.must_change_password) : true), "select", YES_NO)}
       ${field("hotel", "Hotel", existing?.hotel || "", "select", getCatalog("Hotel"))}
       ${field("department", "Departamento", existing?.department || "", "select", getCatalog("Departamento"))}
       <button class="btn primary form-full" type="submit">${isEdit ? "Guardar cambios" : "Crear usuario"}</button>
@@ -985,25 +1101,24 @@ function openUserModal(existing = null) {
 }
 
 async function saveProfile(payload, existing = null) {
-  const profilePayload = {
+  const userPayload = {
     username: payload.username,
     display_name: payload.display_name,
     role: payload.role,
     status: payload.status,
+    blocked: boolValue(payload.blocked),
+    must_change_password: boolValue(payload.must_change_password),
     hotel: payload.hotel || null,
-    department: payload.department || null,
-    updated_at: nowISO()
+    department: payload.department || null
   };
-  if (existing) {
-    await requireOk(await supabase.from("profiles").update(profilePayload).eq("id", existing.id), "No se pudo actualizar el usuario.");
-    await logUserAction(existing, "Usuario editado", JSON.stringify(existing), JSON.stringify(profilePayload), "Perfil de usuario actualizado.");
-    showToast("Usuario actualizado.");
-  } else {
-    const row = { id: payload.id, ...profilePayload, created_at: nowISO() };
-    await requireOk(await supabase.from("profiles").insert(row), "No se pudo crear el usuario.");
-    await logUserAction(row, "Usuario creado", "", JSON.stringify(profilePayload), "Perfil de usuario creado.");
-    showToast("Usuario creado.");
-  }
+  if (!existing) userPayload.password = payload.password;
+  const response = await requireOk(await supabase.rpc("app_save_user", {
+    p_token: sessionToken(),
+    p_user_id: existing?.id || null,
+    p_user: userPayload
+  }), existing ? "No se pudo actualizar el usuario." : "No se pudo crear el usuario.");
+  if (!response?.ok) throw new Error(response?.reason || "No se pudo guardar el usuario.");
+  showToast(existing ? "Usuario actualizado." : "Usuario creado.");
   await reload();
 }
 
@@ -1016,8 +1131,11 @@ async function toggleUserStatus(profile) {
     return;
   }
   try {
-    await requireOk(await supabase.from("profiles").update({ status: nextStatus, updated_at: nowISO() }).eq("id", profile.id), "No se pudo cambiar el estado.");
-    await logUserAction(profile, nextStatus === "Activo" ? "Activación de usuario" : "Desactivación de usuario", profile.status, nextStatus, `Estado cambiado a ${nextStatus}.`);
+    const response = await requireOk(await supabase.rpc("app_toggle_user_status", {
+      p_token: sessionToken(),
+      p_user_id: profile.id
+    }), "No se pudo cambiar el estado.");
+    if (!response?.ok) throw new Error(response?.reason || "No se pudo cambiar el estado.");
     showToast(`Usuario ${nextStatus.toLowerCase()}.`);
     await reload();
   } catch (error) {
@@ -1026,28 +1144,65 @@ async function toggleUserStatus(profile) {
   }
 }
 
+async function toggleUserBlocked(profile) {
+  if (!profile) return;
+  const nextBlocked = !profile.blocked;
+  const validation = validateProfilePayload({ ...profile, blocked: boolText(nextBlocked) }, profile);
+  if (validation) {
+    showToast(validation);
+    return;
+  }
+  try {
+    const response = await requireOk(await supabase.rpc("app_toggle_user_blocked", {
+      p_token: sessionToken(),
+      p_user_id: profile.id
+    }), "No se pudo cambiar el bloqueo.");
+    if (!response?.ok) throw new Error(response?.reason || "No se pudo cambiar el bloqueo.");
+    showToast(nextBlocked ? "Usuario bloqueado." : "Usuario desbloqueado.");
+    await reload();
+  } catch (error) {
+    console.error(error);
+    showToast("No fue posible cambiar el bloqueo del usuario.");
+  }
+}
+
 function openPasswordModal(profile) {
   if (!profile) return;
   const modal = modalHtml(`Contraseña de ${profile.username || "usuario"}`, `
-    <div class="selected-card">
-      <p>Por seguridad, la contraseña se establece desde el panel privado de cuentas de acceso.</p>
-      <p>Después de cambiarla, registra el movimiento con el botón inferior para conservar la bitácora.</p>
-      <button class="btn primary" data-action="password-log" data-id="${escapeHtml(profile.id)}">Registrar restablecimiento</button>
-    </div>
+    <form id="resetPasswordForm" class="form-grid" autocomplete="off">
+      <div class="field form-full">
+        <label>Nueva contraseña temporal</label>
+        <input name="password" type="password" required autocomplete="new-password">
+      </div>
+      ${field("must_change_password", "Debe cambiar password", "Sí", "select", YES_NO, "form-full")}
+      <button class="btn primary form-full" type="submit">Restablecer contraseña</button>
+    </form>
   `);
-  modal.querySelector("[data-action='password-log']").addEventListener("click", () => {
-    registerPasswordReset(profile).catch((error) => {
+  modal.querySelector("#resetPasswordForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const payload = formObject(event.currentTarget);
+    registerPasswordReset(profile, payload.password, boolValue(payload.must_change_password)).catch((error) => {
       console.error(error);
       showToast("No fue posible registrar el restablecimiento.");
     });
   });
 }
 
-async function registerPasswordReset(profile) {
+async function registerPasswordReset(profile, password = "", mustChangePassword = true) {
   if (!profile) return;
-  await logUserAction(profile, "Restablecimiento de contraseña", "", "Registrado", "Se registró el cambio de contraseña del usuario.");
+  if (normalize(password).length < 8) {
+    showToast("La contraseña temporal debe tener al menos 8 caracteres.");
+    return;
+  }
+  const response = await requireOk(await supabase.rpc("app_admin_reset_password", {
+    p_token: sessionToken(),
+    p_user_id: profile.id,
+    p_new_password: password,
+    p_must_change_password: mustChangePassword
+  }), "No se pudo restablecer la contraseña.");
+  if (!response?.ok) throw new Error(response?.reason || "No se pudo restablecer la contraseña.");
   document.querySelector("#modal")?.close();
-  showToast("Restablecimiento registrado en bitácora.");
+  showToast("Contraseña restablecida.");
   await reload();
 }
 
@@ -1074,8 +1229,8 @@ async function createIncident(payload) {
     ...payload,
     due_at: due,
     actual_due_at: due,
-    created_by: state.session.user.id,
-    updated_by: state.session.user.id,
+    created_by: state.profile?.id,
+    updated_by: state.profile?.id,
     created_at: nowISO(),
     updated_at: nowISO()
   };
@@ -1087,7 +1242,7 @@ async function createIncident(payload) {
 
 async function updateIncident(row, changes, action, comment) {
   if (!row) return;
-  const payload = { ...changes, updated_by: state.session.user.id, updated_at: nowISO() };
+  const payload = { ...changes, updated_by: state.profile?.id, updated_at: nowISO() };
   if (payload.status && CLOSED.includes(payload.status) && !row.closed_at) payload.closed_at = nowISO();
   if (payload.status && !CLOSED.includes(payload.status)) payload.closed_at = null;
 
@@ -1104,7 +1259,7 @@ async function updateIncident(row, changes, action, comment) {
 async function insertAudit(incidentIdValue, action, fieldName, oldValue, newValue, comment, row) {
   await supabase.from("audit_log").insert({
     incident_id: incidentIdValue,
-    user_id: state.session.user.id,
+    user_id: state.profile?.id,
     legacy_user: state.profile?.display_name || state.profile?.username || "Usuario",
     action,
     changed_field: fieldName,

@@ -6,9 +6,9 @@ Aplicación web para gestionar incidencias de auditoría con **Supabase** como b
 
 - Frontend: Vite + JavaScript
 - Base de datos: Supabase Postgres
-- Auth: Supabase Auth
+- Login: usuario y contraseña propios de la app
 - Hosting: Cloudflare Pages
-- Seguridad: RLS activo en tablas públicas
+- Seguridad: RLS activo en tablas públicas con sesión interna por token
 
 ## Estructura
 
@@ -29,19 +29,16 @@ Aplicación web para gestionar incidencias de auditoría con **Supabase** como b
 supabase/schema.sql
 ```
 
-4. Crea el primer usuario en Supabase Auth.
-5. Copia su UUID.
-6. Ejecuta el bloque final de bootstrap indicado en `supabase/schema.sql` para convertirlo en `Administrador`.
+4. Entra con el usuario administrador maestro `R-Matos`.
+5. Cambia la clave desde el módulo Usuarios cuando necesites rotarla.
 
-## Usuarios heredados
+## Usuarios
 
-La app permite iniciar sesión con usuarios heredados como `R-Matos`, `B-Paredes` o `F-Peña`. La pantalla de login solo pide `Usuario` y `Contraseña`.
+La app inicia sesión con usuarios como `R-Matos`, `B-Paredes` o `F-Peña`. La pantalla de login solo pide `Usuario` y `Contraseña`.
 
-La tabla `public.profiles` no guarda correos. Solo guarda datos propios de la app: usuario, nombre, rol, estado, hotel y departamento.
+La tabla `public.app_users` guarda los accesos propios de la app: usuario, hash de contraseña, nombre, rol, estado, último acceso, intentos fallidos, bloqueo y cambio obligatorio de contraseña.
 
-Supabase Auth requiere un identificador técnico interno compatible con su sistema de autenticación. La app lo genera y lo oculta; los usuarios finales no lo ven ni lo usan.
-
-Las contraseñas se configuran directamente en el panel de acceso; no se guardan en el repositorio ni en `public.profiles`.
+Las contraseñas se guardan como hash. El frontend nunca muestra ni almacena contraseñas reales.
 
 ## Variables de Cloudflare Pages
 
@@ -82,7 +79,7 @@ pnpm build
 - Detalle, comentario, edición, cierre formal y reapertura.
 - Kanban por estatus.
 - Bitácora general.
-- Usuarios/perfiles con filtros, roles, activación/desactivación y registro en bitácora.
+- Usuarios con filtros, roles, activación, bloqueo, restablecimiento de contraseña y registro en bitácora.
 - Catálogos editables para administradores y supervisores.
 
 ## Migración desde Google Sheets
@@ -131,12 +128,13 @@ Mapeo sugerido:
 
 El SQL activa RLS en:
 
-- `profiles`
+- `app_users`
+- `app_sessions`
 - `incidents`
 - `audit_log`
 - `catalogs`
 
-El frontend usa la anon key pública y depende de Supabase Auth + RLS para limitar acciones.
+El frontend usa la anon key pública y envía un token interno de sesión en cada consulta. Las políticas RLS y las RPC validan ese token antes de permitir lecturas o cambios.
 
 Roles operativos:
 
@@ -145,4 +143,4 @@ Roles operativos:
 - `Auditor`: crea, comenta y edita incidencias propias/asignadas.
 - `Consulta`: solo lectura.
 
-El módulo Usuarios no muestra aliases técnicos ni correos internos. Los cambios de contraseña se realizan fuera del frontend y se registran en la bitácora desde la app.
+El módulo Usuarios administra accesos, roles, activación, bloqueo y restablecimiento de contraseña. Los cambios quedan registrados en bitácora.
