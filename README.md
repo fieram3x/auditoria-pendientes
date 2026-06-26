@@ -34,9 +34,7 @@ supabase/schema.sql
 
 ## Usuarios
 
-El script temporal no crea usuarios iniciales y limpia `public.app_users` para empezar desde cero. La app entra sin pantalla de login como `Administrador Directo` para que puedas crear el primer usuario desde el módulo Usuarios.
-
-No vuelvas a ejecutar `supabase/schema.sql` después de crear usuarios reales hasta reactivar el login, porque este modo temporal vuelve a dejar la tabla de usuarios vacía.
+El script temporal no crea usuarios iniciales ni elimina usuarios existentes. La app entra sin pantalla de login como `Administrador Directo` para que puedas crear el primer usuario desde el módulo Usuarios. Solo necesitas ejecutar `supabase/schema.sql`.
 
 La tabla `public.app_users` guarda los accesos propios de la app: usuario, hash de contraseña, nombre, rol, estado, último acceso, intentos fallidos, bloqueo y cambio obligatorio de contraseña.
 

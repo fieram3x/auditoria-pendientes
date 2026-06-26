@@ -1196,8 +1196,5 @@ insert into public.catalogs (category, value) values
   ('Acción tomada', 'Validación documental')
 on conflict do nothing;
 
-delete from public.app_sessions;
-delete from public.app_users;
-
 -- Modo temporal: la app entra como Administrador Directo sin usuarios iniciales.
--- Crea el usuario real desde el modulo Usuarios y luego se puede reactivar el login.
+-- Este script no crea ni elimina usuarios. Crea el usuario real desde el modulo Usuarios.
