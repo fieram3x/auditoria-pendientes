@@ -40,19 +40,20 @@ const state = {
   audit: [],
   profiles: [],
   catalogs: [],
+  openFilterMenu: "",
   filters: {
-    hotel: "",
-    department: "",
-    priority: "",
-    status: "",
-    responsible: "",
-    type: "",
+    hotel: [],
+    department: [],
+    priority: [],
+    status: [],
+    responsible: [],
+    type: [],
     search: ""
   },
   userFilters: {
     search: "",
-    role: "",
-    status: ""
+    role: [],
+    status: []
   }
 };
 
@@ -202,6 +203,49 @@ function categoryLabel(category) {
 function optionList(values, selected = "") {
   const all = [...new Set([selected, ...values].filter(Boolean))];
   return all.map((value) => `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+}
+
+function filterValues(value) {
+  if (Array.isArray(value)) return value.map(normalize).filter(Boolean);
+  const single = normalize(value);
+  return single ? [single] : [];
+}
+
+function matchesFilter(selected, value) {
+  const selectedValues = filterValues(selected);
+  return !selectedValues.length || selectedValues.includes(normalize(value));
+}
+
+function multiFilterSummary(selected) {
+  const values = filterValues(selected);
+  if (!values.length) return "Todos";
+  if (values.length === 1) return values[0];
+  return `${values.length} seleccionados`;
+}
+
+function renderMultiFilter(scope, key, label, values, selected) {
+  const selectedValues = filterValues(selected);
+  const options = [...new Set([...selectedValues, ...values.map(normalize)].filter(Boolean))];
+  const optionAttr = scope === "users" ? "data-user-filter-option" : "data-filter-option";
+  const clearAttr = scope === "users" ? "data-user-filter-clear" : "data-filter-clear";
+  const menuId = `${scope}:${key}`;
+  return `
+    <div class="field">
+      <label>${escapeHtml(label)}</label>
+      <details class="multi-select" data-multi-filter-menu="${escapeHtml(menuId)}" ${state.openFilterMenu === menuId ? "open" : ""}>
+        <summary><span>${escapeHtml(multiFilterSummary(selectedValues))}</span></summary>
+        <div class="multi-options">
+          ${selectedValues.length ? `<button type="button" class="filter-clear" ${clearAttr}="${escapeHtml(key)}">Limpiar</button>` : ""}
+          ${options.map((value) => `
+            <label class="multi-option">
+              <input type="checkbox" ${optionAttr}="${escapeHtml(key)}" value="${escapeHtml(value)}" ${selectedValues.includes(value) ? "checked" : ""}>
+              <span>${escapeHtml(value)}</span>
+            </label>
+          `).join("") || `<div class="empty compact-empty">Sin opciones</div>`}
+        </div>
+      </details>
+    </div>
+  `;
 }
 
 function showToast(message) {
@@ -527,12 +571,12 @@ function filteredIncidents() {
   return state.incidents.filter((row) => {
     const f = state.filters;
     const text = `${row.id} ${row.hotel} ${row.department} ${row.subject} ${row.incident_type} ${row.description} ${row.responsible}`.toLowerCase();
-    return (!f.hotel || row.hotel === f.hotel)
-      && (!f.department || row.department === f.department)
-      && (!f.priority || row.priority === f.priority)
-      && (!f.status || row.status === f.status)
-      && (!f.responsible || row.responsible === f.responsible)
-      && (!f.type || row.incident_type === f.type)
+    return matchesFilter(f.hotel, row.hotel)
+      && matchesFilter(f.department, row.department)
+      && matchesFilter(f.priority, row.priority)
+      && matchesFilter(f.status, row.status)
+      && matchesFilter(f.responsible, row.responsible)
+      && matchesFilter(f.type, row.incident_type)
       && (!f.search || text.includes(f.search.toLowerCase()));
   });
 }
@@ -548,23 +592,14 @@ function pageHead(title, subtitle, action = "") {
 
 function renderFilters() {
   const f = state.filters;
-  const select = (key, label, values) => `
-    <div class="field">
-      <label>${label}</label>
-      <select data-filter="${key}">
-        <option value="">Todos</option>
-        ${optionList(values, f[key])}
-      </select>
-    </div>
-  `;
   return `
     <div class="filters">
-      ${select("hotel", "División", getDistinct("hotel"))}
-      ${select("department", "Departamento", getDistinct("department"))}
-      ${select("type", "Tipo", getDistinct("incident_type"))}
-      ${select("priority", "Prioridad", PRIORITIES)}
-      ${select("status", "Estatus", STATUSES)}
-      ${select("responsible", "Responsable", getDistinct("responsible"))}
+      ${renderMultiFilter("incidents", "hotel", "División", getDistinct("hotel"), f.hotel)}
+      ${renderMultiFilter("incidents", "department", "Departamento", getDistinct("department"), f.department)}
+      ${renderMultiFilter("incidents", "type", "Tipo", getDistinct("incident_type"), f.type)}
+      ${renderMultiFilter("incidents", "priority", "Prioridad", PRIORITIES, f.priority)}
+      ${renderMultiFilter("incidents", "status", "Estatus", STATUSES, f.status)}
+      ${renderMultiFilter("incidents", "responsible", "Responsable", getDistinct("responsible"), f.responsible)}
       <div class="field"><label>Buscar</label><input data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, asunto, descripción..."></div>
     </div>
   `;
@@ -967,27 +1002,18 @@ function filteredProfiles() {
   return state.profiles.filter((row) => {
     const text = `${row.username || ""} ${row.display_name || ""}`.toLowerCase();
     return (!f.search || text.includes(f.search.toLowerCase()))
-      && (!f.role || row.role === f.role)
-      && (!f.status || row.status === f.status);
+      && matchesFilter(f.role, row.role)
+      && matchesFilter(f.status, row.status);
   });
 }
 
 function renderUserFilters() {
   const f = state.userFilters;
-  const select = (key, label, values) => `
-    <div class="field">
-      <label>${label}</label>
-      <select data-user-filter="${key}">
-        <option value="">Todos</option>
-        ${optionList(values, f[key])}
-      </select>
-    </div>
-  `;
   return `
     <div class="filters user-filters">
       <div class="field"><label>Buscar</label><input data-user-filter="search" value="${escapeHtml(f.search)}" placeholder="Usuario o nombre"></div>
-      ${select("role", "Rol", ROLES)}
-      ${select("status", "Estado", PROFILE_STATUSES)}
+      ${renderMultiFilter("users", "role", "Rol", ROLES, f.role)}
+      ${renderMultiFilter("users", "status", "Estado", PROFILE_STATUSES, f.status)}
     </div>
   `;
 }
@@ -1012,16 +1038,66 @@ function auditUserName(row) {
   return state.profiles.find((profile) => profile.id === row.user_id)?.display_name || row.legacy_user || "";
 }
 
+function checkedFilterValues(selector, key, datasetKey) {
+  return [...document.querySelectorAll(selector)]
+    .filter((input) => input.dataset[datasetKey] === key && input.checked)
+    .map((input) => input.value);
+}
+
 function bindPageEvents() {
+  document.querySelectorAll("[data-multi-filter-menu]").forEach((menu) => {
+    menu.addEventListener("toggle", () => {
+      if (menu.open) {
+        state.openFilterMenu = menu.dataset.multiFilterMenu;
+        document.querySelectorAll("[data-multi-filter-menu]").forEach((otherMenu) => {
+          if (otherMenu !== menu) otherMenu.open = false;
+        });
+      } else if (state.openFilterMenu === menu.dataset.multiFilterMenu) {
+        state.openFilterMenu = "";
+      }
+    });
+  });
   document.querySelectorAll("[data-filter]").forEach((input) => {
     input.addEventListener("input", () => {
       state.filters[input.dataset.filter] = input.value;
       renderPage();
     });
   });
+  document.querySelectorAll("[data-filter-option]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const key = input.dataset.filterOption;
+      state.filters[key] = checkedFilterValues("[data-filter-option]", key, "filterOption");
+      state.openFilterMenu = `incidents:${key}`;
+      renderPage();
+    });
+  });
+  document.querySelectorAll("[data-filter-clear]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.filterClear;
+      state.filters[key] = [];
+      state.openFilterMenu = `incidents:${key}`;
+      renderPage();
+    });
+  });
   document.querySelectorAll("[data-user-filter]").forEach((input) => {
     input.addEventListener("input", () => {
       state.userFilters[input.dataset.userFilter] = input.value;
+      renderPage();
+    });
+  });
+  document.querySelectorAll("[data-user-filter-option]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const key = input.dataset.userFilterOption;
+      state.userFilters[key] = checkedFilterValues("[data-user-filter-option]", key, "userFilterOption");
+      state.openFilterMenu = `users:${key}`;
+      renderPage();
+    });
+  });
+  document.querySelectorAll("[data-user-filter-clear]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.userFilterClear;
+      state.userFilters[key] = [];
+      state.openFilterMenu = `users:${key}`;
       renderPage();
     });
   });
