@@ -77,7 +77,7 @@ pnpm build
 ## Módulos
 
 - Dashboard ejecutivo con KPIs y gráficos simples.
-- Incidencias con tabla tipo Excel, filtros y exportación CSV.
+- Incidencias con tabla tipo Excel, filtros de columna y exportación Excel.
 - Detalle, comentario, edición, cierre formal y reapertura.
 - Kanban por estatus.
 - Bitácora general.

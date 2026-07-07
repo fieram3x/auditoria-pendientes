@@ -1,4 +1,5 @@
 import { PostgrestClient } from "@supabase/postgrest-js";
+import * as XLSX from "xlsx";
 import "./styles.css";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -50,6 +51,10 @@ const state = {
     type: [],
     search: ""
   },
+  incidentSort: {
+    key: "",
+    direction: ""
+  },
   userFilters: {
     search: "",
     role: [],
@@ -83,7 +88,10 @@ const canonicalUser = (value) => normalize(value).toLowerCase().normalize("NFD")
 const slug = (value) => normalize(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "sin-dato";
 const fmtDate = (value, withTime = false) => {
   if (!value) return "";
-  const date = new Date(value);
+  const dateOnly = typeof value === "string" ? value.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
+  const date = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat("es-DO", {
     day: "2-digit",
@@ -209,6 +217,10 @@ function filterValues(value) {
   if (Array.isArray(value)) return value.map(normalize).filter(Boolean);
   const single = normalize(value);
   return single ? [single] : [];
+}
+
+function selectedFilterValues(value) {
+  return filterValues(value);
 }
 
 function matchesFilter(selected, value) {
@@ -568,7 +580,7 @@ function renderPage() {
 }
 
 function filteredIncidents() {
-  return state.incidents.filter((row) => {
+  const rows = state.incidents.filter((row) => {
     const f = state.filters;
     const text = `${row.id} ${row.hotel} ${row.department} ${row.subject} ${row.incident_type} ${row.description} ${row.responsible}`.toLowerCase();
     return matchesFilter(f.hotel, row.hotel)
@@ -578,6 +590,29 @@ function filteredIncidents() {
       && matchesFilter(f.responsible, row.responsible)
       && matchesFilter(f.type, row.incident_type)
       && (!f.search || text.includes(f.search.toLowerCase()));
+  });
+  return sortIncidentRows(rows);
+}
+
+function sortIncidentRows(rows) {
+  const { key, direction } = state.incidentSort;
+  if (!key || !direction) return rows;
+  const priorityRank = new Map(PRIORITIES.map((value, index) => [value, index]));
+  const statusRank = new Map(STATUSES.map((value, index) => [value, index]));
+  const valueForSort = (row) => {
+    if (key === "sla") return slaInfo(row).days ?? 999;
+    if (key === "priority") return priorityRank.get(row.priority) ?? 999;
+    if (key === "status") return statusRank.get(row.status) ?? 999;
+    if (key === "created_at" || key === "due_at") return new Date(row[key] || 0).getTime() || 0;
+    return canonicalUser(row[key]);
+  };
+  return [...rows].sort((a, b) => {
+    const first = valueForSort(a);
+    const second = valueForSort(b);
+    const result = typeof first === "number" && typeof second === "number"
+      ? first - second
+      : String(first).localeCompare(String(second), "es", { numeric: true, sensitivity: "base" });
+    return direction === "desc" ? result * -1 : result;
   });
 }
 
@@ -590,10 +625,11 @@ function pageHead(title, subtitle, action = "") {
   `;
 }
 
-function renderFilters() {
+function renderFilters({ compact = false, sticky = false } = {}) {
   const f = state.filters;
+  const classes = ["filters", compact ? "compact-filters" : "", sticky ? "sticky-filters" : ""].filter(Boolean).join(" ");
   return `
-    <div class="filters">
+    <div class="${classes}">
       ${renderMultiFilter("incidents", "hotel", "División", getDistinct("hotel"), f.hotel)}
       ${renderMultiFilter("incidents", "department", "Departamento", getDistinct("department"), f.department)}
       ${renderMultiFilter("incidents", "type", "Tipo", getDistinct("incident_type"), f.type)}
@@ -834,10 +870,15 @@ function renderIncidents() {
   const createAction = canEditIncident(null, "create") ? `<button class="btn primary" data-action="new-incident">Nueva incidencia</button>` : "";
   return `
     ${pageHead("Incidencias", "Tabla tipo Excel, filtros, acciones y cierre formal.", createAction)}
-    ${renderFilters()}
-    <div class="toolbar">
+    <div class="toolbar table-toolbar">
       <strong>${rows.length} registro(s)</strong>
-      <button class="btn" data-action="export-csv">Exportar CSV</button>
+      <div class="toolbar-actions">
+        <div class="field toolbar-search">
+          <label>Buscar</label>
+          <input data-filter="search" value="${escapeHtml(state.filters.search)}" placeholder="ID, asunto, descripción...">
+        </div>
+        <button class="btn" data-action="export-excel">Exportar Excel</button>
+      </div>
     </div>
     ${excelTable(rows)}
   `;
@@ -845,29 +886,28 @@ function renderIncidents() {
 
 function excelTable(rows) {
   const columns = [
-    ["actions", "Abrir"],
-    ["id", "ID"],
-    ["created_at", "Fecha"],
-    ["hotel", "División"],
-    ["department", "Departamento"],
-    ["subject", "Asunto"],
-    ["incident_type", "Tipo"],
-    ["priority", "Prioridad"],
-    ["status", "Estatus"],
-    ["responsible", "Responsable"],
-    ["sla", "SLA"],
-    ["due_at", "Compromiso"],
-    ["description", "Descripción"]
+    { key: "actions", label: "Abrir" },
+    { key: "id", label: "ID", sortKey: "id" },
+    { key: "created_at", label: "Fecha", sortKey: "created_at" },
+    { key: "hotel", label: "División", filterKey: "hotel", sortKey: "hotel", values: getDistinct("hotel") },
+    { key: "department", label: "Departamento", filterKey: "department", sortKey: "department", values: getDistinct("department") },
+    { key: "subject", label: "Asunto", sortKey: "subject" },
+    { key: "incident_type", label: "Tipo", filterKey: "type", sortKey: "incident_type", values: getDistinct("incident_type") },
+    { key: "priority", label: "Prioridad", filterKey: "priority", sortKey: "priority", values: PRIORITIES },
+    { key: "status", label: "Estatus", filterKey: "status", sortKey: "status", values: STATUSES },
+    { key: "responsible", label: "Responsable", filterKey: "responsible", sortKey: "responsible", values: getDistinct("responsible") },
+    { key: "sla", label: "SLA", sortKey: "sla" },
+    { key: "due_at", label: "Compromiso", sortKey: "due_at" }
   ];
   return `
     <div class="excel-wrap">
       <div class="excel-scroller">
         <table class="excel">
-          <thead><tr>${columns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("")}</tr></thead>
+          <thead><tr>${columns.map((column) => `<th>${renderTableHeader(column)}</th>`).join("")}</tr></thead>
           <tbody>
             ${rows.length ? rows.map((row) => `
               <tr>
-                ${columns.map(([key]) => `<td>${cellValue(row, key)}</td>`).join("")}
+                ${columns.map(({ key }) => `<td>${cellValue(row, key)}</td>`).join("")}
               </tr>
             `).join("") : `<tr><td colspan="${columns.length}" class="empty">No hay incidencias con los filtros seleccionados.</td></tr>`}
           </tbody>
@@ -896,24 +936,34 @@ function renderKanban() {
   const rows = filteredIncidents();
   return `
     ${pageHead("Kanban", "Seguimiento por estatus con cambio rápido.")}
-    ${renderFilters()}
+    ${renderFilters({ compact: true, sticky: true })}
     <div class="kanban">
       ${STATUSES.map((status) => {
         const group = rows.filter((row) => row.status === status);
         return `
-          <section class="kanban-col">
-            <div class="kanban-head"><span>${escapeHtml(status)}</span><b>${group.length}</b></div>
-            ${group.map((row) => `
-              <article class="kanban-card">
-                <button class="row-button" data-action="open-incident" data-id="${escapeHtml(row.id)}">${escapeHtml(row.id)}</button>
-                <span class="muted">${escapeHtml(row.hotel || "")} · ${escapeHtml(row.department || "")}</span>
-                <span>${badge(row.priority)} ${badge(slaInfo(row).label, slaInfo(row).cls)}</span>
-                <strong>${escapeHtml(short(row.subject || row.description, 95))}</strong>
-                <select data-status-change="${escapeHtml(row.id)}" ${!canEditIncident(row, "status") && !canEditIncident(row, "reopen") ? "disabled" : ""}>
-                  ${optionList(statusOptionsFor(row), row.status)}
-                </select>
-              </article>
-            `).join("") || `<div class="empty">Sin incidencias.</div>`}
+          <section class="kanban-col ${slug(status)}">
+            <div class="kanban-head">
+              <span>${escapeHtml(status)}</span>
+              <b>${group.length}</b>
+            </div>
+            <div class="kanban-list">
+              ${group.map((row) => `
+                <article class="kanban-card">
+                  <div class="kanban-card-top">
+                    <button class="row-button" data-action="open-incident" data-id="${escapeHtml(row.id)}">${escapeHtml(row.id)}</button>
+                    ${badge(row.priority)}
+                  </div>
+                  <div class="kanban-card-meta">${escapeHtml(row.hotel || "Sin división")} · ${escapeHtml(row.department || "Sin departamento")}</div>
+                  <strong class="kanban-card-title">${escapeHtml(short(row.subject || row.description || "Sin asunto", 85))}</strong>
+                  <div class="kanban-card-footer">
+                    ${badge(slaInfo(row).label, slaInfo(row).cls)}
+                    <select data-status-change="${escapeHtml(row.id)}" ${!canEditIncident(row, "status") && !canEditIncident(row, "reopen") ? "disabled" : ""}>
+                      ${optionList(statusOptionsFor(row), row.status)}
+                    </select>
+                  </div>
+                </article>
+              `).join("") || `<div class="empty kanban-empty">Sin incidencias.</div>`}
+            </div>
           </section>
         `;
       }).join("")}
@@ -1018,6 +1068,64 @@ function renderUserFilters() {
   `;
 }
 
+function renderTableHeader(column) {
+  const sorted = state.incidentSort.key === column.sortKey ? state.incidentSort.direction : "";
+  return `
+    <div class="excel-th">
+      <span>${escapeHtml(column.label)}${sorted ? ` <b class="sort-mark">${sorted === "asc" ? "A-Z" : "Z-A"}</b>` : ""}</span>
+      ${column.filterKey ? renderColumnFilter(column) : column.sortKey ? renderSortOnly(column) : ""}
+    </div>
+  `;
+}
+
+function renderSortOnly(column) {
+  const menuId = `sort:${column.sortKey}`;
+  return `
+    <details class="column-filter sort-only" data-column-filter-menu="${escapeHtml(menuId)}" ${state.openFilterMenu === menuId ? "open" : ""}>
+      <summary class="filter-trigger" title="Ordenar ${escapeHtml(column.label)}" aria-label="Ordenar ${escapeHtml(column.label)}"></summary>
+      <div class="excel-filter-menu">
+        <button type="button" data-column-filter-sort="${escapeHtml(column.sortKey)}" data-sort-dir="asc">Ordenar de A a Z</button>
+        <button type="button" data-column-filter-sort="${escapeHtml(column.sortKey)}" data-sort-dir="desc">Ordenar de Z a A</button>
+      </div>
+    </details>
+  `;
+}
+
+function renderColumnFilter(column) {
+  const values = [...new Set((column.values || []).map(normalize).filter(Boolean))];
+  const selectedValues = selectedFilterValues(state.filters[column.filterKey]);
+  const checkedValues = selectedValues.length ? selectedValues : values;
+  const menuId = `column:${column.filterKey}`;
+  const allChecked = checkedValues.length === values.length;
+  return `
+    <details class="column-filter" data-column-filter-menu="${escapeHtml(menuId)}" ${state.openFilterMenu === menuId ? "open" : ""}>
+      <summary class="filter-trigger ${selectedValues.length ? "active" : ""}" title="Filtrar ${escapeHtml(column.label)}" aria-label="Filtrar ${escapeHtml(column.label)}"></summary>
+      <div class="excel-filter-menu">
+        <button type="button" data-column-filter-sort="${escapeHtml(column.sortKey)}" data-sort-dir="asc">Ordenar de A a Z</button>
+        <button type="button" data-column-filter-sort="${escapeHtml(column.sortKey)}" data-sort-dir="desc">Ordenar de Z a A</button>
+        <button type="button" data-column-filter-clear="${escapeHtml(column.filterKey)}">Borrar filtro</button>
+        <input class="excel-filter-search" data-filter-menu-search="${escapeHtml(column.filterKey)}" placeholder="Buscar">
+        <label class="excel-filter-check all">
+          <input type="checkbox" data-column-filter-select-all="${escapeHtml(column.filterKey)}" ${allChecked ? "checked" : ""}>
+          <span>(Seleccionar todo)</span>
+        </label>
+        <div class="excel-filter-options">
+          ${values.map((value) => `
+            <label class="excel-filter-check" data-filter-option-row data-filter-text="${escapeHtml(canonicalUser(value))}">
+              <input type="checkbox" data-column-filter-option="${escapeHtml(column.filterKey)}" value="${escapeHtml(value)}" ${checkedValues.includes(value) ? "checked" : ""}>
+              <span>${escapeHtml(value)}</span>
+            </label>
+          `).join("") || `<div class="empty compact-empty">Sin opciones</div>`}
+        </div>
+        <div class="excel-filter-actions">
+          <button type="button" data-column-filter-apply="${escapeHtml(column.filterKey)}">Aceptar</button>
+          <button type="button" data-column-filter-cancel>Cancelar</button>
+        </div>
+      </div>
+    </details>
+  `;
+}
+
 function renderCatalogs() {
   return `
     ${pageHead("Catálogos", "Valores usados por formularios y filtros.", `<button class="btn primary" data-action="new-catalog">Nuevo valor</button>`)}
@@ -1044,15 +1152,29 @@ function checkedFilterValues(selector, key, datasetKey) {
     .map((input) => input.value);
 }
 
+function closeFilterMenus(currentMenu) {
+  document.querySelectorAll("[data-multi-filter-menu], [data-column-filter-menu]").forEach((menu) => {
+    if (menu !== currentMenu) menu.open = false;
+  });
+}
+
 function bindPageEvents() {
   document.querySelectorAll("[data-multi-filter-menu]").forEach((menu) => {
     menu.addEventListener("toggle", () => {
       if (menu.open) {
         state.openFilterMenu = menu.dataset.multiFilterMenu;
-        document.querySelectorAll("[data-multi-filter-menu]").forEach((otherMenu) => {
-          if (otherMenu !== menu) otherMenu.open = false;
-        });
+        closeFilterMenus(menu);
       } else if (state.openFilterMenu === menu.dataset.multiFilterMenu) {
+        state.openFilterMenu = "";
+      }
+    });
+  });
+  document.querySelectorAll("[data-column-filter-menu]").forEach((menu) => {
+    menu.addEventListener("toggle", () => {
+      if (menu.open) {
+        state.openFilterMenu = menu.dataset.columnFilterMenu;
+        closeFilterMenus(menu);
+      } else if (state.openFilterMenu === menu.dataset.columnFilterMenu) {
         state.openFilterMenu = "";
       }
     });
@@ -1076,6 +1198,69 @@ function bindPageEvents() {
       const key = button.dataset.filterClear;
       state.filters[key] = [];
       state.openFilterMenu = `incidents:${key}`;
+      renderPage();
+    });
+  });
+  document.querySelectorAll("[data-filter-menu-search]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const query = canonicalUser(input.value);
+      input.closest(".excel-filter-menu")?.querySelectorAll("[data-filter-option-row]").forEach((row) => {
+        row.hidden = !row.dataset.filterText.includes(query);
+      });
+    });
+  });
+  document.querySelectorAll("[data-column-filter-select-all]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const menu = input.closest(".excel-filter-menu");
+      menu?.querySelectorAll(`[data-column-filter-option="${CSS.escape(input.dataset.columnFilterSelectAll)}"]`).forEach((checkbox) => {
+        checkbox.checked = input.checked;
+      });
+    });
+  });
+  document.querySelectorAll("[data-column-filter-option]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const key = input.dataset.columnFilterOption;
+      const menu = input.closest(".excel-filter-menu");
+      const options = [...(menu?.querySelectorAll(`[data-column-filter-option="${CSS.escape(key)}"]`) || [])];
+      const selectAll = menu?.querySelector(`[data-column-filter-select-all="${CSS.escape(key)}"]`);
+      if (selectAll) selectAll.checked = options.length > 0 && options.every((option) => option.checked);
+    });
+  });
+  document.querySelectorAll("[data-column-filter-apply]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.columnFilterApply;
+      const menu = button.closest(".excel-filter-menu");
+      const options = [...(menu?.querySelectorAll(`[data-column-filter-option="${CSS.escape(key)}"]`) || [])];
+      const selectedValues = options.filter((option) => option.checked).map((option) => option.value);
+      if (!selectedValues.length && options.length) {
+        showToast("Selecciona al menos un valor para aplicar el filtro.");
+        return;
+      }
+      state.filters[key] = selectedValues.length === options.length ? [] : selectedValues;
+      state.openFilterMenu = "";
+      renderPage();
+    });
+  });
+  document.querySelectorAll("[data-column-filter-clear]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filters[button.dataset.columnFilterClear] = [];
+      state.openFilterMenu = "";
+      renderPage();
+    });
+  });
+  document.querySelectorAll("[data-column-filter-cancel]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const details = button.closest("details");
+      if (details) details.open = false;
+    });
+  });
+  document.querySelectorAll("[data-column-filter-sort]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.incidentSort = {
+        key: button.dataset.columnFilterSort,
+        direction: button.dataset.sortDir
+      };
+      state.openFilterMenu = "";
       renderPage();
     });
   });
@@ -1136,7 +1321,7 @@ async function handleAction(action, id) {
   if (action === "comment") openCommentModal(row);
   if (action === "close") openCloseModal(row);
   if (action === "reopen") openReopenModal(row);
-  if (action === "export-csv") exportCsv(filteredIncidents());
+  if (action === "export-excel") exportExcel(filteredIncidents());
   if (action === "new-catalog") openCatalogModal();
   if (action === "new-user") openUserModal();
   if (action === "edit-user") openUserModal(profile);
@@ -1146,8 +1331,9 @@ async function handleAction(action, id) {
   if (action === "audit-user") openUserAuditModal(profile);
 }
 
-function modalHtml(title, body, footer = "") {
+function modalHtml(title, body, footer = "", variant = "") {
   const modal = document.querySelector("#modal");
+  modal.className = ["modal", variant].filter(Boolean).join(" ");
   modal.innerHTML = `
     <div class="modal-body">
       <div class="modal-head"><h3>${escapeHtml(title)}</h3><button class="btn ghost" data-modal-close>Cerrar</button></div>
@@ -1463,42 +1649,72 @@ async function insertAudit(incidentIdValue, action, fieldName, oldValue, newValu
   });
 }
 
+function detailValue(value, fallback = "No registrado") {
+  return normalize(value) || fallback;
+}
+
+function detailField(label, value, extra = "") {
+  return `
+    <div class="detail-field ${extra}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(detailValue(value))}</strong>
+    </div>
+  `;
+}
+
 function openDetailModal(row) {
   if (!row) return;
+  const entries = state.audit.filter((item) => item.incident_id === row.id);
   const modal = modalHtml(row.subject || `Detalle ${row.id}`, `
-    <div class="selected-card">
-      <div>${badge(row.priority)} ${badge(row.status)} ${badge(slaInfo(row).label, slaInfo(row).cls)}</div>
-      <p><b>ID:</b> ${escapeHtml(row.id || "")}</p>
-      <p><b>División:</b> ${escapeHtml(row.hotel || "")}</p>
-      <p><b>Departamento:</b> ${escapeHtml(row.department || "")}</p>
-      <p><b>Tipo:</b> ${escapeHtml(row.incident_type || "")}</p>
-      <p><b>Área responsable:</b> ${escapeHtml(row.responsible_area || "")}</p>
-      <p><b>Responsable:</b> ${escapeHtml(row.responsible || "Sin asignar")}</p>
-      <p><b>Asunto:</b> ${escapeHtml(row.subject || "")}</p>
-      <p><b>Descripción:</b><br>${escapeHtml(row.description || "")}</p>
-      <p><b>Fecha compromiso:</b> ${escapeHtml(fmtDate(row.due_at))}</p>
-      <p><b>Causa raíz:</b> ${escapeHtml(row.root_cause || "")}</p>
-      <p><b>Acción tomada:</b> ${escapeHtml(row.action_taken || "")}</p>
-      <p><b>Comentario final:</b> ${escapeHtml(row.final_comment || "")}</p>
-    </div>
-    <div class="actions">
-      <button class="btn" data-detail-action="comment" ${!canEditIncident(row, "comment") ? "disabled" : ""}>Comentar</button>
-      <button class="btn" data-detail-action="edit" ${!canEditIncident(row, "edit") ? "disabled" : ""}>Editar</button>
-      ${CLOSED.includes(row.status)
-        ? `<button class="btn primary" data-detail-action="reopen" ${!canEditIncident(row, "reopen") ? "disabled" : ""}>Reabrir</button>`
-        : `<button class="btn primary" data-detail-action="close" ${!canEditIncident(row, "close") ? "disabled" : ""}>Cerrar</button>`}
-    </div>
-    <h3>Bitácora</h3>
-    <div class="timeline">
-      ${state.audit.filter((item) => item.incident_id === row.id).map((item) => `
-        <div class="timeline-item">
-          <b>${escapeHtml(item.action)}</b> · <span class="muted">${escapeHtml(fmtDate(item.occurred_at, true))}</span>
-          <p>${escapeHtml(item.changed_field || "General")}: ${escapeHtml(item.old_value || "")} → ${escapeHtml(item.new_value || "")}</p>
-          <p>${escapeHtml(item.comment || "")}</p>
+    <div class="detail-modal-grid">
+      <section class="detail-main">
+        <div class="detail-badges">${badge(row.priority)} ${badge(row.status)} ${badge(slaInfo(row).label, slaInfo(row).cls)}</div>
+        <div class="detail-grid">
+          ${detailField("ID", row.id)}
+          ${detailField("Fecha compromiso", fmtDate(row.due_at))}
+          ${detailField("División", row.hotel)}
+          ${detailField("Departamento", row.department)}
+          ${detailField("Tipo", row.incident_type)}
+          ${detailField("Área responsable", row.responsible_area)}
+          ${detailField("Responsable", row.responsible || "Sin asignar")}
+          ${detailField("Asunto", row.subject)}
         </div>
-      `).join("") || `<div class="empty">Sin movimientos.</div>`}
+        <div class="detail-description">
+          <span>Descripción</span>
+          <p>${escapeHtml(detailValue(row.description))}</p>
+        </div>
+        <div class="detail-grid detail-grid-secondary">
+          ${detailField("Causa raíz", row.root_cause)}
+          ${detailField("Acción tomada", row.action_taken)}
+          ${detailField("Comentario final", row.final_comment, "wide")}
+        </div>
+      </section>
+      <aside class="detail-side">
+        <div class="detail-actions">
+          <button class="btn" data-detail-action="comment" ${!canEditIncident(row, "comment") ? "disabled" : ""}>Comentar</button>
+          <button class="btn" data-detail-action="edit" ${!canEditIncident(row, "edit") ? "disabled" : ""}>Editar</button>
+          ${CLOSED.includes(row.status)
+            ? `<button class="btn primary" data-detail-action="reopen" ${!canEditIncident(row, "reopen") ? "disabled" : ""}>Reabrir</button>`
+            : `<button class="btn primary" data-detail-action="close" ${!canEditIncident(row, "close") ? "disabled" : ""}>Cerrar</button>`}
+        </div>
+        <div class="detail-log">
+          <div class="detail-log-head">
+            <h3>Bitácora</h3>
+            <span>${entries.length}</span>
+          </div>
+          <div class="timeline detail-timeline">
+            ${entries.map((item) => `
+              <div class="timeline-item">
+                <b>${escapeHtml(item.action)}</b> · <span class="muted">${escapeHtml(fmtDate(item.occurred_at, true))}</span>
+                <p>${escapeHtml(item.changed_field || "General")}: ${escapeHtml(item.old_value || "")} → ${escapeHtml(item.new_value || "")}</p>
+                <p>${escapeHtml(item.comment || "")}</p>
+              </div>
+            `).join("") || `<div class="empty">Sin movimientos.</div>`}
+          </div>
+        </div>
+      </aside>
     </div>
-  `);
+  `, "", "incident-detail-modal");
   modal.querySelectorAll("[data-detail-action]").forEach((button) => {
     button.addEventListener("click", () => {
       modal.close();
@@ -1587,31 +1803,64 @@ function openCatalogModal() {
   });
 }
 
-function exportCsv(rows) {
-  const headers = ["ID", "Fecha", "División", "Departamento", "Asunto", "Tipo", "Prioridad", "Estatus", "Responsable", "SLA", "Descripción"];
-  const csvRows = [
-    headers.join(","),
-    ...rows.map((row) => [
-      row.id,
-      fmtDate(row.created_at),
-      row.hotel,
-      row.department,
-      row.subject,
-      row.incident_type,
-      row.priority,
-      row.status,
-      row.responsible,
-      slaInfo(row).label,
-      row.description
-    ].map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
+function exportExcel(rows) {
+  const headers = [
+    "ID",
+    "Fecha",
+    "División",
+    "Departamento",
+    "Asunto",
+    "Tipo",
+    "Prioridad",
+    "Estatus",
+    "Responsable",
+    "SLA",
+    "Fecha compromiso",
+    "Descripción",
+    "Causa raíz",
+    "Acción tomada",
+    "Comentario final"
   ];
-  const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "incidencias_filtradas.csv";
-  link.click();
-  URL.revokeObjectURL(url);
+  const exportRows = rows.map((row) => ({
+    ID: row.id || "",
+    Fecha: fmtDate(row.created_at),
+    División: row.hotel || "",
+    Departamento: row.department || "",
+    Asunto: row.subject || "",
+    Tipo: row.incident_type || "",
+    Prioridad: row.priority || "",
+    Estatus: row.status || "",
+    Responsable: row.responsible || "Sin asignar",
+    SLA: slaInfo(row).label,
+    "Fecha compromiso": fmtDate(row.due_at),
+    Descripción: row.description || "",
+    "Causa raíz": row.root_cause || "",
+    "Acción tomada": row.action_taken || "",
+    "Comentario final": row.final_comment || ""
+  }));
+  const worksheet = XLSX.utils.json_to_sheet(exportRows, { header: headers });
+  const range = XLSX.utils.decode_range(worksheet["!ref"] || "A1:A1");
+  worksheet["!autofilter"] = { ref: XLSX.utils.encode_range(range) };
+  worksheet["!cols"] = [
+    { wch: 24 },
+    { wch: 12 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 26 },
+    { wch: 24 },
+    { wch: 12 },
+    { wch: 18 },
+    { wch: 20 },
+    { wch: 18 },
+    { wch: 16 },
+    { wch: 48 },
+    { wch: 24 },
+    { wch: 24 },
+    { wch: 32 }
+  ];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Incidencias");
+  XLSX.writeFile(workbook, `incidencias_filtradas_${todayISO()}.xlsx`);
 }
 
 async function reload() {
