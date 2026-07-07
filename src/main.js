@@ -12,6 +12,7 @@ const ROLES = ["Administrador", "Supervisor", "Auditor", "Consulta"];
 const PROFILE_STATUSES = ["Activo", "Inactivo"];
 const YES_NO = ["No", "Sí"];
 const SLA_DAYS = { "Crítica": 1, Critica: 1, Alta: 2, Media: 3, Baja: 5 };
+const NO_FILTER_MATCH = "__NO_FILTER_MATCH__";
 const APP_SESSION_STORAGE_KEY = "auditoriaPendientes.session";
 const SESSION_HEADER = "x-app-session-token";
 const USER_COLUMNS = "id, username, display_name, role, status, last_access_at, failed_attempts, blocked, must_change_password, created_at, updated_at";
@@ -220,16 +221,18 @@ function filterValues(value) {
 }
 
 function selectedFilterValues(value) {
-  return filterValues(value);
+  return filterValues(value).filter((item) => item !== NO_FILTER_MATCH);
 }
 
 function matchesFilter(selected, value) {
   const selectedValues = filterValues(selected);
+  if (selectedValues.includes(NO_FILTER_MATCH)) return false;
   return !selectedValues.length || selectedValues.includes(normalize(value));
 }
 
 function multiFilterSummary(selected) {
   const values = filterValues(selected);
+  if (values.includes(NO_FILTER_MATCH)) return "0 seleccionados";
   if (!values.length) return "Todos";
   if (values.length === 1) return values[0];
   return `${values.length} seleccionados`;
@@ -1080,12 +1083,14 @@ function renderTableHeader(column) {
 
 function renderSortOnly(column) {
   const menuId = `sort:${column.sortKey}`;
+  const sorted = state.incidentSort.key === column.sortKey;
   return `
     <details class="column-filter sort-only" data-column-filter-menu="${escapeHtml(menuId)}" ${state.openFilterMenu === menuId ? "open" : ""}>
       <summary class="filter-trigger" title="Ordenar ${escapeHtml(column.label)}" aria-label="Ordenar ${escapeHtml(column.label)}"></summary>
       <div class="excel-filter-menu">
         <button type="button" data-column-filter-sort="${escapeHtml(column.sortKey)}" data-sort-dir="asc">Ordenar de A a Z</button>
         <button type="button" data-column-filter-sort="${escapeHtml(column.sortKey)}" data-sort-dir="desc">Ordenar de Z a A</button>
+        ${sorted ? `<button type="button" data-column-sort-clear>Quitar orden</button>` : ""}
       </div>
     </details>
   `;
@@ -1093,16 +1098,20 @@ function renderSortOnly(column) {
 
 function renderColumnFilter(column) {
   const values = [...new Set((column.values || []).map(normalize).filter(Boolean))];
-  const selectedValues = selectedFilterValues(state.filters[column.filterKey]);
-  const checkedValues = selectedValues.length ? selectedValues : values;
+  const rawSelectedValues = filterValues(state.filters[column.filterKey]);
+  const isEmptyFilter = rawSelectedValues.includes(NO_FILTER_MATCH);
+  const selectedValues = rawSelectedValues.filter((value) => value !== NO_FILTER_MATCH);
+  const checkedValues = selectedValues.length ? selectedValues : isEmptyFilter ? [] : values;
   const menuId = `column:${column.filterKey}`;
   const allChecked = checkedValues.length === values.length;
+  const sorted = state.incidentSort.key === column.sortKey;
   return `
     <details class="column-filter" data-column-filter-menu="${escapeHtml(menuId)}" ${state.openFilterMenu === menuId ? "open" : ""}>
-      <summary class="filter-trigger ${selectedValues.length ? "active" : ""}" title="Filtrar ${escapeHtml(column.label)}" aria-label="Filtrar ${escapeHtml(column.label)}"></summary>
+      <summary class="filter-trigger ${selectedValues.length || isEmptyFilter ? "active" : ""}" title="Filtrar ${escapeHtml(column.label)}" aria-label="Filtrar ${escapeHtml(column.label)}"></summary>
       <div class="excel-filter-menu">
         <button type="button" data-column-filter-sort="${escapeHtml(column.sortKey)}" data-sort-dir="asc">Ordenar de A a Z</button>
         <button type="button" data-column-filter-sort="${escapeHtml(column.sortKey)}" data-sort-dir="desc">Ordenar de Z a A</button>
+        ${sorted ? `<button type="button" data-column-sort-clear>Quitar orden</button>` : ""}
         <button type="button" data-column-filter-clear="${escapeHtml(column.filterKey)}">Borrar filtro</button>
         <input class="excel-filter-search" data-filter-menu-search="${escapeHtml(column.filterKey)}" placeholder="Buscar">
         <label class="excel-filter-check all">
@@ -1158,7 +1167,81 @@ function closeFilterMenus(currentMenu) {
   });
 }
 
+function columnFilterOptions(menu, key) {
+  return [...(menu?.querySelectorAll("[data-column-filter-option]") || [])]
+    .filter((option) => option.dataset.columnFilterOption === key);
+}
+
+function columnFilterSelectAll(menu, key) {
+  return [...(menu?.querySelectorAll("[data-column-filter-select-all]") || [])]
+    .find((option) => option.dataset.columnFilterSelectAll === key);
+}
+
+function renderPageKeepingInput(input, selector, datasetKey) {
+  const key = input.dataset[datasetKey];
+  const cursor = input.selectionStart ?? input.value.length;
+  renderPage();
+  const nextInput = [...document.querySelectorAll(selector)].find((item) => item.dataset[datasetKey] === key);
+  if (!nextInput) return;
+  nextInput.focus();
+  if (typeof nextInput.setSelectionRange === "function") {
+    const nextCursor = Math.min(cursor, nextInput.value.length);
+    nextInput.setSelectionRange(nextCursor, nextCursor);
+  }
+}
+
+function handleColumnFilterClick(event) {
+  const target = event.target.closest("[data-column-filter-apply], [data-column-filter-clear], [data-column-filter-cancel], [data-column-filter-sort], [data-column-sort-clear]");
+  if (!target) return;
+  event.preventDefault();
+
+  if (target.dataset.columnFilterApply) {
+    const key = target.dataset.columnFilterApply;
+    const menu = target.closest(".excel-filter-menu");
+    const options = columnFilterOptions(menu, key);
+    const selectedValues = options.filter((option) => option.checked).map((option) => option.value);
+    state.filters[key] = selectedValues.length === options.length ? [] : selectedValues.length ? selectedValues : [NO_FILTER_MATCH];
+    state.openFilterMenu = "";
+    renderPage();
+    return;
+  }
+
+  if (target.dataset.columnFilterClear) {
+    state.filters[target.dataset.columnFilterClear] = [];
+    state.openFilterMenu = "";
+    renderPage();
+    return;
+  }
+
+  if (target.hasAttribute("data-column-filter-cancel")) {
+    const details = target.closest("details");
+    if (details) details.open = false;
+    return;
+  }
+
+  if (target.dataset.columnFilterSort) {
+    state.incidentSort = {
+      key: target.dataset.columnFilterSort,
+      direction: target.dataset.sortDir
+    };
+    state.openFilterMenu = "";
+    renderPage();
+    return;
+  }
+
+  if (target.hasAttribute("data-column-sort-clear")) {
+    state.incidentSort = { key: "", direction: "" };
+    state.openFilterMenu = "";
+    renderPage();
+  }
+}
+
 function bindPageEvents() {
+  const pageRoot = document.querySelector("#page");
+  if (pageRoot && !pageRoot.dataset.columnFilterHandlerBound) {
+    pageRoot.dataset.columnFilterHandlerBound = "true";
+    pageRoot.addEventListener("click", handleColumnFilterClick);
+  }
   document.querySelectorAll("[data-multi-filter-menu]").forEach((menu) => {
     menu.addEventListener("toggle", () => {
       if (menu.open) {
@@ -1182,7 +1265,7 @@ function bindPageEvents() {
   document.querySelectorAll("[data-filter]").forEach((input) => {
     input.addEventListener("input", () => {
       state.filters[input.dataset.filter] = input.value;
-      renderPage();
+      renderPageKeepingInput(input, "[data-filter]", "filter");
     });
   });
   document.querySelectorAll("[data-filter-option]").forEach((input) => {
@@ -1212,7 +1295,7 @@ function bindPageEvents() {
   document.querySelectorAll("[data-column-filter-select-all]").forEach((input) => {
     input.addEventListener("change", () => {
       const menu = input.closest(".excel-filter-menu");
-      menu?.querySelectorAll(`[data-column-filter-option="${CSS.escape(input.dataset.columnFilterSelectAll)}"]`).forEach((checkbox) => {
+      columnFilterOptions(menu, input.dataset.columnFilterSelectAll).forEach((checkbox) => {
         checkbox.checked = input.checked;
       });
     });
@@ -1221,53 +1304,15 @@ function bindPageEvents() {
     input.addEventListener("change", () => {
       const key = input.dataset.columnFilterOption;
       const menu = input.closest(".excel-filter-menu");
-      const options = [...(menu?.querySelectorAll(`[data-column-filter-option="${CSS.escape(key)}"]`) || [])];
-      const selectAll = menu?.querySelector(`[data-column-filter-select-all="${CSS.escape(key)}"]`);
+      const options = columnFilterOptions(menu, key);
+      const selectAll = columnFilterSelectAll(menu, key);
       if (selectAll) selectAll.checked = options.length > 0 && options.every((option) => option.checked);
-    });
-  });
-  document.querySelectorAll("[data-column-filter-apply]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const key = button.dataset.columnFilterApply;
-      const menu = button.closest(".excel-filter-menu");
-      const options = [...(menu?.querySelectorAll(`[data-column-filter-option="${CSS.escape(key)}"]`) || [])];
-      const selectedValues = options.filter((option) => option.checked).map((option) => option.value);
-      if (!selectedValues.length && options.length) {
-        showToast("Selecciona al menos un valor para aplicar el filtro.");
-        return;
-      }
-      state.filters[key] = selectedValues.length === options.length ? [] : selectedValues;
-      state.openFilterMenu = "";
-      renderPage();
-    });
-  });
-  document.querySelectorAll("[data-column-filter-clear]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.filters[button.dataset.columnFilterClear] = [];
-      state.openFilterMenu = "";
-      renderPage();
-    });
-  });
-  document.querySelectorAll("[data-column-filter-cancel]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const details = button.closest("details");
-      if (details) details.open = false;
-    });
-  });
-  document.querySelectorAll("[data-column-filter-sort]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.incidentSort = {
-        key: button.dataset.columnFilterSort,
-        direction: button.dataset.sortDir
-      };
-      state.openFilterMenu = "";
-      renderPage();
     });
   });
   document.querySelectorAll("[data-user-filter]").forEach((input) => {
     input.addEventListener("input", () => {
       state.userFilters[input.dataset.userFilter] = input.value;
-      renderPage();
+      renderPageKeepingInput(input, "[data-user-filter]", "userFilter");
     });
   });
   document.querySelectorAll("[data-user-filter-option]").forEach((input) => {
