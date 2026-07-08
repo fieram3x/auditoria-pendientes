@@ -662,6 +662,37 @@ table.excel {
   position: relative;
 }
 
+.audit-table {
+  table-layout: fixed;
+  min-width: 1280px;
+}
+
+.audit-table th {
+  padding: 10px 12px;
+  line-height: 1.2;
+}
+
+.audit-table th:nth-child(1),
+.audit-table td:nth-child(1) {
+  width: 180px;
+  min-width: 180px;
+}
+
+.audit-table th:nth-child(2),
+.audit-table td:nth-child(2) {
+  width: 150px;
+}
+
+.audit-table th:nth-child(3),
+.audit-table td:nth-child(3) {
+  width: 150px;
+}
+
+.audit-table th:nth-child(4),
+.audit-table td:nth-child(4) {
+  width: 180px;
+}
+
 .sort-mark {
   display: inline-flex;
   margin-left: 4px;

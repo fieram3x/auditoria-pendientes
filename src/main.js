@@ -1219,7 +1219,7 @@ function renderAudit() {
     </div>
     <div class="excel-wrap">
       <div class="excel-scroller">
-        <table class="excel">
+        <table class="excel audit-table">
           <thead><tr><th>Fecha</th><th>Usuario</th><th>Incidencia</th><th>Acción</th><th>Campo</th><th>Anterior</th><th>Nuevo</th><th>Comentario</th></tr></thead>
           <tbody>
             ${rows.map((row) => `
