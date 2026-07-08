@@ -12,6 +12,8 @@ const ROLES = ["Administrador", "Supervisor", "Auditor", "Consulta"];
 const PROFILE_STATUSES = ["Activo", "Inactivo"];
 const YES_NO = ["No", "Sí"];
 const SLA_DAYS = { "Crítica": 1, Critica: 1, Alta: 2, Media: 3, Baja: 5 };
+const INCIDENT_ID_PREFIX = "INC";
+const INCIDENT_ID_WIDTH = 6;
 const NO_FILTER_MATCH = "__NO_FILTER_MATCH__";
 const APP_SESSION_STORAGE_KEY = "auditoriaPendientes.session";
 const SESSION_HEADER = "x-app-session-token";
@@ -152,8 +154,14 @@ function sessionToken() {
 }
 
 function incidentId() {
-  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
-  return `INC-${stamp}-${Math.random().toString(16).slice(2, 6).toUpperCase()}`;
+  const maxSequentialId = state.incidents.reduce((max, row) => {
+    const match = normalize(row.id).match(/^INC-(\d{6})$/);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+  const nextNumber = Math.max(maxSequentialId, state.incidents.length) + 1;
+  const maxAllowed = 10 ** INCIDENT_ID_WIDTH - 1;
+  if (nextNumber > maxAllowed) throw new Error("Se agotó la secuencia disponible para incidencias.");
+  return `${INCIDENT_ID_PREFIX}-${String(nextNumber).padStart(INCIDENT_ID_WIDTH, "0")}`;
 }
 
 function dueDate(priority, createdAt = new Date()) {
@@ -274,6 +282,11 @@ function showToast(message) {
 async function requireOk(result, fallback = "No se pudo completar la operación.") {
   if (result.error) throw new Error(result.error.message || fallback);
   return result.data;
+}
+
+function isDuplicateIdError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("duplicate") || message.includes("unique") || message.includes("already exists");
 }
 
 function friendlyLoginError(error) {
@@ -1686,20 +1699,28 @@ function openUserAuditModal(profile) {
 
 async function createIncident(payload) {
   const due = payload.due_at || dueDate(payload.priority);
-  const row = {
-    id: incidentId(),
-    ...payload,
-    due_at: due,
-    actual_due_at: due,
-    created_by: state.profile?.id,
-    updated_by: state.profile?.id,
-    created_at: nowISO(),
-    updated_at: nowISO()
-  };
-  await requireOk(await supabase.from("incidents").insert(row), "No se pudo crear la incidencia.");
-  await insertAudit(row.id, "Creación", "Incidencia", "", "Creada", "Incidencia creada.", row);
-  showToast("Incidencia creada.");
-  await reload();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const row = {
+      id: incidentId(),
+      ...payload,
+      due_at: due,
+      actual_due_at: due,
+      created_by: state.profile?.id,
+      updated_by: state.profile?.id,
+      created_at: nowISO(),
+      updated_at: nowISO()
+    };
+    try {
+      await requireOk(await supabase.from("incidents").insert(row), "No se pudo crear la incidencia.");
+      await insertAudit(row.id, "Creación", "Incidencia", "", "Creada", "Incidencia creada.", row);
+      showToast(`Incidencia ${row.id} creada.`);
+      await reload();
+      return;
+    } catch (error) {
+      if (!isDuplicateIdError(error) || attempt === 2) throw error;
+      await loadAppData();
+    }
+  }
 }
 
 async function updateIncident(row, changes, action, comment) {
