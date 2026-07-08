@@ -46,6 +46,7 @@ const state = {
   profiles: [],
   catalogs: [],
   openFilterMenu: "",
+  filterMenuPosition: { top: 0, left: 0 },
   filters: {
     id: [],
     created_at: [],
@@ -602,17 +603,19 @@ function renderPage() {
 }
 
 function filteredIncidents() {
-  const columns = incidentColumns().filter((column) => column.filterKey);
-  const rows = state.incidents.filter((row) => {
-    const f = state.filters;
-    const text = [
-      ...columns.map((column) => columnFilterValue(row, column)),
-      row.description
-    ].join(" ").toLowerCase();
-    return columns.every((column) => matchesFilter(f[column.filterKey], columnFilterValue(row, column)))
-      && (!f.search || text.includes(f.search.toLowerCase()));
-  });
+  const rows = state.incidents.filter((row) => rowMatchesIncidentFilters(row));
   return sortIncidentRows(rows);
+}
+
+function rowMatchesIncidentFilters(row, { excludeKey = "" } = {}) {
+  const columns = incidentColumns().filter((column) => column.filterKey);
+  const f = state.filters;
+  const text = [
+    ...columns.map((column) => columnFilterSearchText(row, column)),
+    row.description
+  ].join(" ").toLowerCase();
+  return columns.every((column) => column.filterKey === excludeKey || matchesFilter(f[column.filterKey], columnFilterValue(row, column)))
+    && (!f.search || text.includes(f.search.toLowerCase()));
 }
 
 function sortIncidentRows(rows) {
@@ -943,16 +946,16 @@ function incidentColumns() {
   return [
     { key: "actions", label: "Abrir" },
     { key: "id", label: "ID", filterKey: "id", sortKey: "id" },
-    { key: "created_at", label: "Fecha", filterKey: "created_at", sortKey: "created_at" },
+    { key: "created_at", label: "Fecha", filterKey: "created_at", sortKey: "created_at", type: "date" },
     { key: "hotel", label: "División", filterKey: "hotel", sortKey: "hotel" },
     { key: "department", label: "Departamento", filterKey: "department", sortKey: "department" },
     { key: "subject", label: "Asunto", filterKey: "subject", sortKey: "subject" },
     { key: "incident_type", label: "Tipo", filterKey: "type", sortKey: "incident_type" },
-    { key: "priority", label: "Prioridad", filterKey: "priority", sortKey: "priority", values: PRIORITIES },
-    { key: "status", label: "Estatus", filterKey: "status", sortKey: "status", values: STATUSES },
+    { key: "priority", label: "Prioridad", filterKey: "priority", sortKey: "priority" },
+    { key: "status", label: "Estatus", filterKey: "status", sortKey: "status" },
     { key: "responsible", label: "Responsable", filterKey: "responsible", sortKey: "responsible" },
     { key: "sla", label: "SLA", filterKey: "sla", sortKey: "sla" },
-    { key: "due_at", label: "Compromiso", filterKey: "due_at", sortKey: "due_at" }
+    { key: "due_at", label: "Compromiso", filterKey: "due_at", sortKey: "due_at", type: "date" }
   ];
 }
 
@@ -973,6 +976,7 @@ function excelTable(rows) {
         </table>
       </div>
     </div>
+    ${renderOpenColumnFilterMenu(columns)}
   `;
 }
 
@@ -981,17 +985,40 @@ function filterDisplayValue(value) {
   return normalized || EMPTY_FILTER_LABEL;
 }
 
+function dateFilterKey(value) {
+  const normalized = normalize(value);
+  const isoDate = normalized.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoDate) return `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}`;
+  const localDate = normalized.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (localDate) return `${localDate[3]}-${localDate[2]}-${localDate[1]}`;
+  const parsed = normalized ? new Date(normalized) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString().slice(0, 10) : "";
+}
+
+function dateFilterLabel(value) {
+  if (value === EMPTY_FILTER_LABEL) return value;
+  return fmtDate(value);
+}
+
 function columnFilterValue(row, column) {
-  if (column.key === "created_at" || column.key === "due_at") return filterDisplayValue(fmtDate(row[column.key]));
+  if (column.type === "date") return filterDisplayValue(dateFilterKey(row[column.key]));
   if (column.key === "sla") return filterDisplayValue(slaInfo(row).label);
   return filterDisplayValue(row[column.key]);
 }
 
+function columnFilterSearchText(row, column) {
+  const value = columnFilterValue(row, column);
+  return column.type === "date" ? `${value} ${dateFilterLabel(value)}` : value;
+}
+
 function columnFilterValues(column) {
-  const values = column.values?.length
-    ? column.values.map(filterDisplayValue)
-    : state.incidents.map((row) => columnFilterValue(row, column));
+  const rows = state.incidents.filter((row) => rowMatchesIncidentFilters(row, { excludeKey: column.filterKey }));
+  const values = rows.map((row) => columnFilterValue(row, column));
   return [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "es", { numeric: true, sensitivity: "base" }));
+}
+
+function columnOptionLabel(value, column) {
+  return column.type === "date" ? dateFilterLabel(value) : value;
 }
 
 function cellValue(row, key) {
@@ -1175,18 +1202,43 @@ function renderSortOnly(column) {
 }
 
 function renderColumnFilter(column) {
+  const menuId = `column:${column.filterKey}`;
   const rawSelectedValues = filterValues(state.filters[column.filterKey]);
   const isEmptyFilter = rawSelectedValues.includes(NO_FILTER_MATCH);
   const selectedValues = rawSelectedValues.filter((value) => value !== NO_FILTER_MATCH);
+  const active = selectedValues.length || isEmptyFilter;
+  return `
+    <button
+      type="button"
+      class="filter-trigger ${active ? "active" : ""}"
+      data-column-filter-open="${escapeHtml(column.filterKey)}"
+      data-column-filter-menu-id="${escapeHtml(menuId)}"
+      title="Filtrar ${escapeHtml(column.label)}"
+      aria-label="Filtrar ${escapeHtml(column.label)}"
+      aria-expanded="${state.openFilterMenu === menuId ? "true" : "false"}">
+    </button>
+  `;
+}
+
+function renderOpenColumnFilterMenu(columns) {
+  if (!state.openFilterMenu?.startsWith("column:")) return "";
+  const key = state.openFilterMenu.slice("column:".length);
+  const column = columns.find((item) => item.filterKey === key);
+  if (!column) return "";
+  const selectedValues = selectedFilterValues(state.filters[column.filterKey]);
   const values = [...new Set([...selectedValues, ...columnFilterValues(column)])];
+  return renderColumnFilterMenu(column, values);
+}
+
+function renderColumnFilterMenu(column, values) {
+  const rawSelectedValues = filterValues(state.filters[column.filterKey]);
+  const isEmptyFilter = rawSelectedValues.includes(NO_FILTER_MATCH);
+  const selectedValues = rawSelectedValues.filter((value) => value !== NO_FILTER_MATCH);
   const checkedValues = selectedValues.length ? selectedValues : isEmptyFilter ? [] : values;
-  const menuId = `column:${column.filterKey}`;
   const allChecked = values.length > 0 && checkedValues.length === values.length;
   const sorted = state.incidentSort.key === column.sortKey;
   return `
-    <details class="column-filter" data-column-filter-menu="${escapeHtml(menuId)}" ${state.openFilterMenu === menuId ? "open" : ""}>
-      <summary class="filter-trigger ${selectedValues.length || isEmptyFilter ? "active" : ""}" title="Filtrar ${escapeHtml(column.label)}" aria-label="Filtrar ${escapeHtml(column.label)}"></summary>
-      <div class="excel-filter-menu">
+      <div class="excel-filter-menu" data-column-filter-menu-panel="${escapeHtml(column.filterKey)}" style="--filter-menu-top:${state.filterMenuPosition.top}px;--filter-menu-left:${state.filterMenuPosition.left}px;">
         <button type="button" data-column-filter-sort="${escapeHtml(column.sortKey)}" data-sort-dir="asc">Ordenar de A a Z</button>
         <button type="button" data-column-filter-sort="${escapeHtml(column.sortKey)}" data-sort-dir="desc">Ordenar de Z a A</button>
         ${sorted ? `<button type="button" data-column-sort-clear>Quitar orden</button>` : ""}
@@ -1201,10 +1253,10 @@ function renderColumnFilter(column) {
           <span>Agregar la selección actual al filtro</span>
         </label>
         <div class="excel-filter-options">
-          ${values.map((value) => `
-            <label class="excel-filter-check" data-filter-option-row data-filter-text="${escapeHtml(canonicalUser(value))}">
+          ${column.type === "date" ? renderDateFilterOptions(column, values, checkedValues) : values.map((value) => `
+            <label class="excel-filter-check" data-filter-option-row data-filter-text="${escapeHtml(canonicalUser(columnOptionLabel(value, column)))}">
               <input type="checkbox" data-column-filter-option="${escapeHtml(column.filterKey)}" value="${escapeHtml(value)}" ${checkedValues.includes(value) ? "checked" : ""}>
-              <span>${escapeHtml(value)}</span>
+              <span>${escapeHtml(columnOptionLabel(value, column))}</span>
             </label>
           `).join("") || `<div class="empty compact-empty">Sin opciones</div>`}
         </div>
@@ -1213,7 +1265,70 @@ function renderColumnFilter(column) {
           <button type="button" data-column-filter-cancel>Cancelar</button>
         </div>
       </div>
-    </details>
+  `;
+}
+
+function monthLabel(yearMonth) {
+  const [year, month] = yearMonth.split("-").map(Number);
+  const date = new Date(year, month - 1, 1);
+  return new Intl.DateTimeFormat("es-DO", { month: "long" }).format(date);
+}
+
+function renderDateFilterOptions(column, values, checkedValues) {
+  const emptyValues = values.filter((value) => value === EMPTY_FILTER_LABEL);
+  const dateValues = values.filter((value) => value !== EMPTY_FILTER_LABEL && /^\d{4}-\d{2}-\d{2}$/.test(value));
+  const grouped = new Map();
+  dateValues.forEach((value) => {
+    const [year, month] = value.split("-");
+    if (!grouped.has(year)) grouped.set(year, new Map());
+    const months = grouped.get(year);
+    if (!months.has(month)) months.set(month, []);
+    months.get(month).push(value);
+  });
+  const emptyHtml = emptyValues.map((value) => renderDateLeaf(column, value, checkedValues)).join("");
+  const dateHtml = [...grouped.entries()].map(([year, months]) => {
+    const yearValues = [...months.values()].flat();
+    return `
+      <div class="excel-date-group" data-date-group>
+        <div class="excel-date-row">
+          <button type="button" class="date-toggle" data-date-toggle aria-label="Contraer ${escapeHtml(year)}"></button>
+          <label class="excel-filter-check date-group-check">
+            <input type="checkbox" data-column-filter-date-group="${escapeHtml(column.filterKey)}" data-date-prefix="${escapeHtml(year)}" ${yearValues.every((value) => checkedValues.includes(value)) ? "checked" : ""}>
+            <span>${escapeHtml(year)}</span>
+          </label>
+        </div>
+        <div class="excel-date-children">
+          ${[...months.entries()].map(([month, days]) => {
+            const monthKey = `${year}-${month}`;
+            return `
+              <div class="excel-date-group" data-date-group>
+                <div class="excel-date-row month-row">
+                  <button type="button" class="date-toggle" data-date-toggle aria-label="Contraer ${escapeHtml(monthLabel(monthKey))}"></button>
+                  <label class="excel-filter-check date-group-check">
+                    <input type="checkbox" data-column-filter-date-group="${escapeHtml(column.filterKey)}" data-date-prefix="${escapeHtml(monthKey)}" ${days.every((value) => checkedValues.includes(value)) ? "checked" : ""}>
+                    <span>${escapeHtml(monthLabel(monthKey))}</span>
+                  </label>
+                </div>
+                <div class="excel-date-children">
+                  ${days.map((value) => renderDateLeaf(column, value, checkedValues)).join("")}
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }).join("");
+  return `${emptyHtml}${dateHtml}` || `<div class="empty compact-empty">Sin opciones</div>`;
+}
+
+function renderDateLeaf(column, value, checkedValues) {
+  const label = columnOptionLabel(value, column);
+  return `
+    <label class="excel-filter-check date-leaf" data-filter-option-row data-filter-text="${escapeHtml(canonicalUser(`${value} ${label}`))}">
+      <input type="checkbox" data-column-filter-option="${escapeHtml(column.filterKey)}" data-date-value="${escapeHtml(value)}" value="${escapeHtml(value)}" ${checkedValues.includes(value) ? "checked" : ""}>
+      <span>${escapeHtml(label)}</span>
+    </label>
   `;
 }
 
@@ -1277,6 +1392,22 @@ function updateColumnFilterSelectAll(menu, key) {
   selectAll.indeterminate = checkedCount > 0 && checkedCount < options.length;
 }
 
+function updateDateGroupStates(menu, key) {
+  [...(menu?.querySelectorAll("[data-column-filter-date-group]") || [])].forEach((group) => {
+    const prefix = group.dataset.datePrefix;
+    const options = columnFilterOptions(menu, key).filter((option) => option.value.startsWith(prefix));
+    const checkedCount = options.filter((option) => option.checked).length;
+    group.checked = options.length > 0 && checkedCount === options.length;
+    group.indeterminate = checkedCount > 0 && checkedCount < options.length;
+  });
+}
+
+function updateDateGroupVisibility(menu) {
+  [...(menu?.querySelectorAll("[data-date-group]") || [])].reverse().forEach((group) => {
+    group.hidden = !group.querySelector("[data-filter-option-row]:not([hidden])");
+  });
+}
+
 function renderPageKeepingInput(input, selector, datasetKey) {
   const key = input.dataset[datasetKey];
   const cursor = input.selectionStart ?? input.value.length;
@@ -1290,10 +1421,40 @@ function renderPageKeepingInput(input, selector, datasetKey) {
   }
 }
 
+function columnMenuPosition(trigger) {
+  const width = 306;
+  const margin = 10;
+  const rect = trigger.getBoundingClientRect();
+  const left = Math.min(Math.max(rect.right - width, margin), window.innerWidth - width - margin);
+  const below = rect.bottom + 6;
+  const maxHeight = Math.min(430, window.innerHeight - margin * 2);
+  const top = below + maxHeight > window.innerHeight - margin
+    ? Math.max(margin, rect.top - maxHeight - 6)
+    : below;
+  return { top: Math.round(top), left: Math.round(left) };
+}
+
 function handleColumnFilterClick(event) {
-  const target = event.target.closest("[data-column-filter-apply], [data-column-filter-clear], [data-column-filter-cancel], [data-column-filter-sort], [data-column-sort-clear]");
+  const target = event.target.closest("[data-column-filter-open], [data-column-filter-apply], [data-column-filter-clear], [data-column-filter-cancel], [data-column-filter-sort], [data-column-sort-clear], [data-date-toggle]");
   if (!target) return;
   event.preventDefault();
+
+  if (target.dataset.columnFilterOpen) {
+    const menuId = target.dataset.columnFilterMenuId;
+    if (state.openFilterMenu === menuId) {
+      state.openFilterMenu = "";
+    } else {
+      state.openFilterMenu = menuId;
+      state.filterMenuPosition = columnMenuPosition(target);
+    }
+    renderPage();
+    return;
+  }
+
+  if (target.dataset.dateToggle !== undefined) {
+    target.closest("[data-date-group]")?.classList.toggle("collapsed");
+    return;
+  }
 
   if (target.dataset.columnFilterApply) {
     const key = target.dataset.columnFilterApply;
@@ -1318,8 +1479,8 @@ function handleColumnFilterClick(event) {
   }
 
   if (target.hasAttribute("data-column-filter-cancel")) {
-    const details = target.closest("details");
-    if (details) details.open = false;
+    state.openFilterMenu = "";
+    renderPage();
     return;
   }
 
@@ -1356,16 +1517,6 @@ function bindPageEvents() {
       }
     });
   });
-  document.querySelectorAll("[data-column-filter-menu]").forEach((menu) => {
-    menu.addEventListener("toggle", () => {
-      if (menu.open) {
-        state.openFilterMenu = menu.dataset.columnFilterMenu;
-        closeFilterMenus(menu);
-      } else if (state.openFilterMenu === menu.dataset.columnFilterMenu) {
-        state.openFilterMenu = "";
-      }
-    });
-  });
   document.querySelectorAll("[data-filter]").forEach((input) => {
     const eventName = input.tagName === "SELECT" ? "change" : "input";
     input.addEventListener(eventName, () => {
@@ -1397,8 +1548,15 @@ function bindPageEvents() {
       menu?.querySelectorAll("[data-filter-option-row]").forEach((row) => {
         row.hidden = !row.dataset.filterText.includes(query);
       });
+      updateDateGroupVisibility(menu);
+      updateDateGroupStates(menu, key);
       updateColumnFilterSelectAll(menu, key);
     });
+  });
+  document.querySelectorAll("[data-column-filter-menu-panel]").forEach((menu) => {
+    const key = menu.dataset.columnFilterMenuPanel;
+    updateDateGroupStates(menu, key);
+    updateColumnFilterSelectAll(menu, key);
   });
   document.querySelectorAll("[data-column-filter-select-all]").forEach((input) => {
     input.addEventListener("change", () => {
@@ -1407,6 +1565,7 @@ function bindPageEvents() {
       visibleColumnFilterOptions(menu, key).forEach((checkbox) => {
         checkbox.checked = input.checked;
       });
+      updateDateGroupStates(menu, key);
       updateColumnFilterSelectAll(menu, key);
     });
   });
@@ -1414,6 +1573,21 @@ function bindPageEvents() {
     input.addEventListener("change", () => {
       const key = input.dataset.columnFilterOption;
       const menu = input.closest(".excel-filter-menu");
+      updateDateGroupStates(menu, key);
+      updateColumnFilterSelectAll(menu, key);
+    });
+  });
+  document.querySelectorAll("[data-column-filter-date-group]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const key = input.dataset.columnFilterDateGroup;
+      const menu = input.closest(".excel-filter-menu");
+      const prefix = input.dataset.datePrefix;
+      columnFilterOptions(menu, key)
+        .filter((checkbox) => checkbox.value.startsWith(prefix))
+        .forEach((checkbox) => {
+          checkbox.checked = input.checked;
+        });
+      updateDateGroupStates(menu, key);
       updateColumnFilterSelectAll(menu, key);
     });
   });
