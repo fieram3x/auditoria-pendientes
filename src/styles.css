@@ -541,6 +541,81 @@ p {
   margin-top: 6px;
 }
 
+.dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dashboard-metric {
+  min-height: 116px;
+  border-radius: 12px;
+  padding: 16px;
+  color: #fff;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+}
+
+.dashboard-metric.blue {
+  background: linear-gradient(135deg, #0f766e, #14b8a6);
+}
+
+.dashboard-metric.red {
+  background: linear-gradient(135deg, #b91c1c, #ef4444);
+}
+
+.dashboard-metric.orange {
+  background: linear-gradient(135deg, #ea580c, #f59e0b);
+}
+
+.dashboard-metric.green {
+  background: linear-gradient(135deg, #15803d, #22c55e);
+}
+
+.dashboard-metric span {
+  display: block;
+  font-size: 12px;
+  font-weight: 850;
+  opacity: 0.86;
+}
+
+.dashboard-metric strong {
+  display: block;
+  font-size: 34px;
+  line-height: 1;
+  margin-top: 12px;
+}
+
+.dashboard-metric p {
+  margin: 9px 0 0;
+  font-size: 12px;
+  opacity: 0.86;
+}
+
+.metric-sparkline {
+  width: 112px;
+  height: 36px;
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.metric-sparkline path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.metric-sparkline circle {
+  fill: #fff;
+}
+
 .excel-wrap {
   background: #fff;
   border: 1px solid var(--line);
@@ -1017,14 +1092,24 @@ table.excel {
 
 .detail-side {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto;
+  align-content: start;
   gap: 10px;
 }
 
 .detail-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.incident-audit-modal {
+  width: min(640px, calc(100vw - 30px));
+}
+
+.floating-detail-log {
+  max-height: min(620px, calc(100vh - 145px));
+  min-height: 260px;
 }
 
 .detail-log {
@@ -1097,6 +1182,70 @@ table.excel {
 
 .dashboard-visuals-secondary {
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+}
+
+.dashboard-board {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-board > .panel {
+  min-width: 0;
+  grid-column: span 4;
+}
+
+.dashboard-board > .chart-wide {
+  grid-column: span 6;
+}
+
+.dashboard-board > .donut-panel,
+.dashboard-board > .dashboard-compact-panel {
+  grid-column: span 3;
+}
+
+.attention-panel {
+  min-height: 230px;
+}
+
+.attention-list {
+  display: grid;
+  gap: 8px;
+}
+
+.attention-item {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fbff;
+  padding: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+}
+
+.attention-item:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.attention-item span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.attention-item b,
+.attention-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attention-item small {
+  color: var(--muted);
 }
 
 .chart-panel {
@@ -1544,11 +1693,19 @@ table.excel {
   .filters,
   .compact-filters,
   .kpi-grid,
+  .dashboard-metrics,
+  .dashboard-board,
   .dashboard-visuals,
   .dashboard-visuals-secondary,
   .charts,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+  .dashboard-board > .panel,
+  .dashboard-board > .chart-wide,
+  .dashboard-board > .donut-panel,
+  .dashboard-board > .dashboard-compact-panel {
+    grid-column: 1;
   }
   .sticky-filters {
     top: 0;

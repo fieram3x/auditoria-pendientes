@@ -21,16 +21,14 @@ const SESSION_HEADER = "x-app-session-token";
 const USER_COLUMNS = "id, username, display_name, role, status, last_access_at, failed_attempts, blocked, must_change_password, created_at, updated_at";
 const PASSWORD_MASK = "********";
 const CHART_COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#ef4444", "#8b5cf6", "#0f766e", "#64748b"];
+const HIDDEN_CATALOG_CATEGORIES = ["Área Responsable", "Causa raíz", "Acción tomada"];
 const CATALOG_DEFAULTS = {
   División: ["5910 - PPRL", "5911 - ZEL", "5917 - MPCB", "5918 - MCB", "5930 - PGC"],
   Departamento: ["Recepción", "Reservas", "A&B", "Spa", "Contabilidad", "IT", "Club Meliá", "Auditoría Nocturna", "Auditoría Diurna"],
-  "Área Responsable": ["Operaciones", "Finanzas", "Contabilidad", "Revenue", "Sistemas", "Auditoría"],
   "Tipo de Incidencia": ["Cobro no realizado", "Routing incorrecto", "Check-in mal procesado", "Rate Code incorrecto", "Factura no volcada a SAP", "Diferencia POS vs PMS", "Resort Credit incorrecto", "HTC incorrecto", "Falta de soporte", "Incidencia IT"],
   Impacto: ["Operativo", "Financiero", "Contable", "Cliente", "Sistema"],
   Prioridad: PRIORITIES,
-  Estatus: STATUSES,
-  "Causa raíz": ["Error operativo", "Falta de soporte", "Configuración incorrecta", "Proceso incompleto", "Incidencia de sistema"],
-  "Acción tomada": ["Corrección en PMS", "Corrección contable", "Escalamiento a IT", "Capacitación al equipo", "Validación documental"]
+  Estatus: STATUSES
 };
 
 const app = document.querySelector("#app");
@@ -71,6 +69,9 @@ const state = {
     search: "",
     role: [],
     status: []
+  },
+  auditFilters: {
+    search: ""
   }
 };
 
@@ -214,6 +215,11 @@ function canEditIncident(row, action = "edit") {
 function statusOptionsFor(row) {
   if (CLOSED.includes(row.status)) return STATUSES.filter((status) => CLOSED.includes(status) || canEditIncident(row, "reopen"));
   return STATUSES.filter((status) => !CLOSED.includes(status) || canEditIncident(row, "close"));
+}
+
+function incidentFormStatusOptions(row = null) {
+  const openStatuses = STATUSES.filter((status) => !CLOSED.includes(status));
+  return row && CLOSED.includes(row.status) ? [row.status, ...openStatuses] : openStatuses;
 }
 
 function getCatalog(category) {
@@ -718,32 +724,72 @@ function renderDashboard() {
   const open = rows.filter((row) => !CLOSED.includes(row.status));
   const closed = rows.filter((row) => CLOSED.includes(row.status));
   const overdue = open.filter((row) => slaInfo(row).days < 0);
+  const dueSoon = open.filter((row) => {
+    const days = slaInfo(row).days;
+    return days !== null && days >= 0 && days <= 1;
+  });
   const critical = rows.filter((row) => ["Crítica", "Critica"].includes(row.priority));
   const closedMonth = closed.filter((row) => fmtDate(row.closed_at).slice(3) === fmtDate(new Date()).slice(3));
   const slaMet = rows.filter((row) => slaInfo(row).met).length;
-  const topDepartment = topValue(rows, "department") || "-";
+  const trendValues = dashboardTrendValues(rows);
   return `
     ${pageHead("Dashboard", "Indicadores ejecutivos y comportamiento operativo.")}
     ${renderFilters()}
-    <div class="kpi-grid">
-      ${kpi("Total", rows.length, "Incidencias filtradas")}
-      ${kpi("Abiertas", open.length, `${pct(open.length, rows.length)}% del total`)}
-      ${kpi("Vencidas", overdue.length, "Fuera de SLA")}
-      ${kpi("Críticas", critical.length, "Prioridad máxima")}
-      ${kpi("Cerradas este mes", closedMonth.length, "Productividad mensual")}
-      ${kpi("% Cumplimiento SLA", `${pct(slaMet, rows.length)}%`, "Filtrado actual")}
-      ${kpi("Departamento con más incidencias", topDepartment, "Concentración")}
+    <div class="dashboard-metrics">
+      ${metricCard("Abiertas", open.length, `${pct(open.length, rows.length)}% del total`, "blue", trendValues)}
+      ${metricCard("Vencidas", overdue.length, "Fuera de SLA", "red", trendValues)}
+      ${metricCard("Críticas", critical.length, "Prioridad máxima", "orange", trendValues)}
+      ${metricCard("SLA cumplido", `${pct(slaMet, rows.length)}%`, `${closedMonth.length} cerradas este mes`, "green", trendValues)}
     </div>
-    <div class="dashboard-visuals">
+    <div class="dashboard-board">
       ${trendPanel("Tendencia mensual", rows)}
       ${donutPanel("Cumplimiento SLA", slaMet, rows.length, "En SLA", "Fuera SLA", "#16a34a")}
-      ${barPanel("Incidencias por departamento", rows, "department")}
+      ${barPanel("Carga por departamento", rows, "department", "dashboard-compact-panel")}
+      ${statusPanel(rows)}
+      ${barPanel("Impacto", rows, "impact", "dashboard-compact-panel")}
+      ${attentionPanel([...overdue, ...dueSoon, ...critical])}
     </div>
   `;
 }
 
 function kpi(label, value, sub) {
   return `<div class="kpi"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div><div class="sub">${escapeHtml(sub)}</div></div>`;
+}
+
+function dashboardTrendValues(rows) {
+  return recentMonths(6).map((month) => rows.filter((row) => monthKey(row.created_at) === month.key).length);
+}
+
+function metricSparkline(values) {
+  const max = Math.max(1, ...values);
+  const width = 112;
+  const height = 36;
+  const step = values.length > 1 ? width / (values.length - 1) : width;
+  const points = values.map((value, index) => {
+    const x = index * step;
+    const y = height - (value / max) * (height - 4) - 2;
+    return [x, y];
+  });
+  const path = points.map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  return `
+    <svg class="metric-sparkline" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+      <path d="${path}"></path>
+      ${points.map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2"></circle>`).join("")}
+    </svg>
+  `;
+}
+
+function metricCard(label, value, sub, tone, trendValues) {
+  return `
+    <section class="dashboard-metric ${tone}">
+      <div>
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(value)}</strong>
+        <p>${escapeHtml(sub)}</p>
+      </div>
+      ${metricSparkline(trendValues)}
+    </section>
+  `;
 }
 
 function pct(part, total) {
@@ -899,7 +945,7 @@ function priorityPanel(rows) {
   `;
 }
 
-function barPanel(title, rows, key) {
+function barPanel(title, rows, key, extra = "") {
   const counts = new Map();
   rows.forEach((row) => {
     const value = normalize(row[key]) || "Sin dato";
@@ -908,7 +954,7 @@ function barPanel(title, rows, key) {
   const max = Math.max(1, ...counts.values());
   const items = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
   return `
-    <section class="panel">
+    <section class="panel ${extra}">
       <h3>${escapeHtml(title)}</h3>
       ${items.length ? items.map(([label, value]) => `
         <div class="bar-row">
@@ -917,6 +963,32 @@ function barPanel(title, rows, key) {
           <b>${value}</b>
         </div>
       `).join("") : `<div class="empty">Sin datos</div>`}
+    </section>
+  `;
+}
+
+function attentionPanel(rows) {
+  const items = [...new Map(rows.map((row) => [row.id, row])).values()]
+    .filter((row) => !CLOSED.includes(row.status))
+    .sort((a, b) => (slaInfo(a).days ?? 999) - (slaInfo(b).days ?? 999))
+    .slice(0, 6);
+  return `
+    <section class="panel attention-panel">
+      <div class="chart-head">
+        <h3>Requieren atención</h3>
+        <span>${escapeHtml(items.length)} prioridad</span>
+      </div>
+      <div class="attention-list">
+        ${items.map((row) => `
+          <button class="attention-item" data-action="open-incident" data-id="${escapeHtml(row.id)}">
+            <span>
+              <b>${escapeHtml(row.id)}</b>
+              <small>${escapeHtml(short(row.subject || row.description || "Sin asunto", 58))}</small>
+            </span>
+            ${badge(slaInfo(row).label, slaInfo(row).cls)}
+          </button>
+        `).join("") || `<div class="empty compact-empty">No hay incidencias críticas o vencidas.</div>`}
+      </div>
     </section>
   `;
 }
@@ -1076,15 +1148,46 @@ function renderKanban() {
   `;
 }
 
+function auditSearchText(row) {
+  return [
+    fmtDate(row.occurred_at, true),
+    auditUserName(row),
+    row.incident_id,
+    row.action,
+    row.changed_field,
+    row.old_value,
+    row.new_value,
+    row.comment,
+    row.hotel,
+    row.status
+  ].map(normalize).join(" ").toLowerCase();
+}
+
+function filteredAuditEntries() {
+  const query = normalize(state.auditFilters.search).toLowerCase();
+  return state.audit.filter((row) => !query || auditSearchText(row).includes(query));
+}
+
 function renderAudit() {
+  const rows = filteredAuditEntries();
   return `
     ${pageHead("Bitácora", "Historial completo de cambios y comentarios.")}
+    <div class="toolbar table-toolbar">
+      <strong>${rows.length} movimiento(s)</strong>
+      <div class="toolbar-actions">
+        <div class="field toolbar-search">
+          <label>Buscar</label>
+          <input data-audit-filter="search" value="${escapeHtml(state.auditFilters.search)}" placeholder="ID, usuario, acción, comentario...">
+        </div>
+        <button class="btn" data-action="export-audit">Exportar Excel</button>
+      </div>
+    </div>
     <div class="excel-wrap">
       <div class="excel-scroller">
         <table class="excel">
           <thead><tr><th>Fecha</th><th>Usuario</th><th>Incidencia</th><th>Acción</th><th>Campo</th><th>Anterior</th><th>Nuevo</th><th>Comentario</th></tr></thead>
           <tbody>
-            ${state.audit.map((row) => `
+            ${rows.map((row) => `
               <tr>
                 <td>${escapeHtml(fmtDate(row.occurred_at, true))}</td>
                 <td>${escapeHtml(auditUserName(row))}</td>
@@ -1095,7 +1198,7 @@ function renderAudit() {
                 <td>${escapeHtml(row.new_value || "")}</td>
                 <td>${escapeHtml(row.comment || "")}</td>
               </tr>
-            `).join("") || `<tr><td colspan="8" class="empty">Sin movimientos.</td></tr>`}
+            `).join("") || `<tr><td colspan="8" class="empty">No hay movimientos con la búsqueda indicada.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -1330,6 +1433,7 @@ function renderDateLeaf(column, value, checkedValues) {
 }
 
 function renderCatalogs() {
+  const rows = state.catalogs.filter((row) => !HIDDEN_CATALOG_CATEGORIES.includes(row.category));
   return `
     ${pageHead("Catálogos", "Valores usados por formularios y filtros.", `<button class="btn primary" data-action="new-catalog">Nuevo valor</button>`)}
     <div class="excel-wrap">
@@ -1337,7 +1441,7 @@ function renderCatalogs() {
         <table class="excel">
           <thead><tr><th>Categoría</th><th>Valor</th></tr></thead>
           <tbody>
-            ${state.catalogs.map((row) => `<tr><td>${escapeHtml(categoryLabel(row.category))}</td><td>${escapeHtml(row.value)}</td></tr>`).join("")}
+            ${rows.map((row) => `<tr><td>${escapeHtml(categoryLabel(row.category))}</td><td>${escapeHtml(row.value)}</td></tr>`).join("")}
           </tbody>
         </table>
       </div>
@@ -1610,6 +1714,12 @@ function bindPageEvents() {
       renderPage();
     });
   });
+  document.querySelectorAll("[data-audit-filter]").forEach((input) => {
+    input.addEventListener("input", () => {
+      state.auditFilters[input.dataset.auditFilter] = input.value;
+      renderPageKeepingInput(input, "[data-audit-filter]", "auditFilter");
+    });
+  });
   document.querySelectorAll("[data-status-change]").forEach((select) => {
     select.addEventListener("change", async () => {
       const row = state.incidents.find((incident) => incident.id === select.dataset.statusChange);
@@ -1642,10 +1752,12 @@ async function handleAction(action, id) {
   if (action === "new-incident") openIncidentModal();
   if (action === "edit") openIncidentModal(row);
   if (action === "open-incident" || action === "detail") openDetailModal(row);
+  if (action === "audit-incident") openIncidentAuditModal(row);
   if (action === "comment") openCommentModal(row);
   if (action === "close") openCloseModal(row);
   if (action === "reopen") openReopenModal(row);
   if (action === "export-excel") exportExcel(filteredIncidents());
+  if (action === "export-audit") exportAuditExcel(filteredAuditEntries());
   if (action === "new-catalog") openCatalogModal();
   if (action === "new-user") openUserModal();
   if (action === "edit-user") openUserModal(profile);
@@ -1679,7 +1791,7 @@ function openIncidentModal(row = null) {
       ${field("incident_type", "Tipo de incidencia", row?.incident_type, "select", getCatalog("Tipo de Incidencia"))}
       ${field("impact", "Impacto", row?.impact, "select", getCatalog("Impacto"))}
       ${field("priority", "Prioridad", row?.priority || "Media", "select", PRIORITIES)}
-      ${field("status", "Estatus", row?.status || "Pendiente", "select", STATUSES)}
+      ${field("status", "Estatus", row?.status || "Pendiente", "select", incidentFormStatusOptions(row))}
       ${field("due_at", "Fecha compromiso", row?.due_at || dueDate(row?.priority || "Media"), "date")}
       ${field("subject", "Asunto", row?.subject, "text", [], "form-full")}
       ${field("description", "Descripción", row?.description, "textarea", [], "form-full")}
@@ -2008,9 +2120,27 @@ function detailField(label, value, extra = "") {
   `;
 }
 
+function incidentAuditEntries(row) {
+  return row ? state.audit.filter((item) => item.incident_id === row.id) : [];
+}
+
+function auditTimeline(entries) {
+  return `
+    <div class="timeline detail-timeline">
+      ${entries.map((item) => `
+        <div class="timeline-item">
+          <b>${escapeHtml(item.action)}</b> · <span class="muted">${escapeHtml(fmtDate(item.occurred_at, true))}</span>
+          <p>${escapeHtml(item.changed_field || "General")}: ${escapeHtml(item.old_value || "")} → ${escapeHtml(item.new_value || "")}</p>
+          <p>${escapeHtml(item.comment || "")}</p>
+        </div>
+      `).join("") || `<div class="empty">Sin movimientos.</div>`}
+    </div>
+  `;
+}
+
 function openDetailModal(row) {
   if (!row) return;
-  const entries = state.audit.filter((item) => item.incident_id === row.id);
+  const entries = incidentAuditEntries(row);
   const modal = modalHtml(row.subject || `Detalle ${row.id}`, `
     <div class="detail-modal-grid">
       <section class="detail-main">
@@ -2028,33 +2158,17 @@ function openDetailModal(row) {
           <p>${escapeHtml(detailValue(row.description))}</p>
         </div>
         <div class="detail-grid detail-grid-secondary">
-          ${detailField("Causa raíz", row.root_cause)}
-          ${detailField("Acción tomada", row.action_taken)}
           ${detailField("Comentario final", row.final_comment, "wide")}
         </div>
       </section>
       <aside class="detail-side">
         <div class="detail-actions">
           <button class="btn" data-detail-action="comment" ${!canEditIncident(row, "comment") ? "disabled" : ""}>Comentar</button>
+          <button class="btn" data-detail-action="audit-incident">Bitácora (${entries.length})</button>
           <button class="btn" data-detail-action="edit" ${!canEditIncident(row, "edit") ? "disabled" : ""}>Editar</button>
           ${CLOSED.includes(row.status)
             ? `<button class="btn primary" data-detail-action="reopen" ${!canEditIncident(row, "reopen") ? "disabled" : ""}>Reabrir</button>`
             : `<button class="btn primary" data-detail-action="close" ${!canEditIncident(row, "close") ? "disabled" : ""}>Cerrar</button>`}
-        </div>
-        <div class="detail-log">
-          <div class="detail-log-head">
-            <h3>Bitácora</h3>
-            <span>${entries.length}</span>
-          </div>
-          <div class="timeline detail-timeline">
-            ${entries.map((item) => `
-              <div class="timeline-item">
-                <b>${escapeHtml(item.action)}</b> · <span class="muted">${escapeHtml(fmtDate(item.occurred_at, true))}</span>
-                <p>${escapeHtml(item.changed_field || "General")}: ${escapeHtml(item.old_value || "")} → ${escapeHtml(item.new_value || "")}</p>
-                <p>${escapeHtml(item.comment || "")}</p>
-              </div>
-            `).join("") || `<div class="empty">Sin movimientos.</div>`}
-          </div>
         </div>
       </aside>
     </div>
@@ -2068,6 +2182,20 @@ function openDetailModal(row) {
       });
     });
   });
+}
+
+function openIncidentAuditModal(row) {
+  if (!row) return;
+  const entries = incidentAuditEntries(row);
+  modalHtml(`Bitácora ${row.id}`, `
+    <div class="detail-log floating-detail-log">
+      <div class="detail-log-head">
+        <h3>Movimientos</h3>
+        <span>${entries.length}</span>
+      </div>
+      ${auditTimeline(entries)}
+    </div>
+  `, "", "incident-audit-modal");
 }
 
 function openCommentModal(row) {
@@ -2090,8 +2218,6 @@ function openCommentModal(row) {
 function openCloseModal(row) {
   const modal = modalHtml(`Cerrar ${row.id}`, `
     <form id="closeForm" class="form-grid">
-      ${field("root_cause", "Causa raíz", row.root_cause, "select", getCatalog("Causa raíz"))}
-      ${field("action_taken", "Acción tomada", row.action_taken, "select", getCatalog("Acción tomada"))}
       ${field("close_reason", "Motivo de cierre", row.close_reason)}
       ${field("final_comment", "Comentario final", row.final_comment, "textarea", [], "form-full")}
       <button class="btn primary form-full" type="submit">Cerrar incidencia</button>
@@ -2100,8 +2226,8 @@ function openCloseModal(row) {
   modal.querySelector("#closeForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = formObject(event.currentTarget);
-    if (!payload.root_cause || !payload.action_taken || !payload.final_comment) {
-      showToast("Causa raíz, acción tomada y comentario final son obligatorios.");
+    if (!payload.final_comment) {
+      showToast("El comentario final es obligatorio.");
       return;
     }
     await updateIncident(row, { ...payload, status: "Cerrado", closed_at: nowISO() }, "Cierre formal", payload.final_comment);
@@ -2160,8 +2286,6 @@ function exportExcel(rows) {
     "SLA",
     "Fecha compromiso",
     "Descripción",
-    "Causa raíz",
-    "Acción tomada",
     "Comentario final"
   ];
   const exportRows = rows.map((row) => ({
@@ -2176,8 +2300,6 @@ function exportExcel(rows) {
     SLA: slaInfo(row).label,
     "Fecha compromiso": fmtDate(row.due_at),
     Descripción: row.description || "",
-    "Causa raíz": row.root_cause || "",
-    "Acción tomada": row.action_taken || "",
     "Comentario final": row.final_comment || ""
   }));
   const worksheet = XLSX.utils.json_to_sheet(exportRows, { header: headers });
@@ -2195,13 +2317,45 @@ function exportExcel(rows) {
     { wch: 18 },
     { wch: 16 },
     { wch: 48 },
-    { wch: 24 },
-    { wch: 24 },
     { wch: 32 }
   ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Incidencias");
   XLSX.writeFile(workbook, `incidencias_filtradas_${todayISO()}.xlsx`);
+}
+
+function exportAuditExcel(rows) {
+  const headers = ["Fecha", "Usuario", "Incidencia", "Acción", "Campo", "Anterior", "Nuevo", "Comentario", "División", "Estatus"];
+  const exportRows = rows.map((row) => ({
+    Fecha: fmtDate(row.occurred_at, true),
+    Usuario: auditUserName(row),
+    Incidencia: row.incident_id || "",
+    Acción: row.action || "",
+    Campo: row.changed_field || "",
+    Anterior: row.old_value || "",
+    Nuevo: row.new_value || "",
+    Comentario: row.comment || "",
+    División: row.hotel || "",
+    Estatus: row.status || ""
+  }));
+  const worksheet = XLSX.utils.json_to_sheet(exportRows, { header: headers });
+  const range = XLSX.utils.decode_range(worksheet["!ref"] || "A1:A1");
+  worksheet["!autofilter"] = { ref: XLSX.utils.encode_range(range) };
+  worksheet["!cols"] = [
+    { wch: 20 },
+    { wch: 24 },
+    { wch: 18 },
+    { wch: 24 },
+    { wch: 22 },
+    { wch: 28 },
+    { wch: 28 },
+    { wch: 42 },
+    { wch: 18 },
+    { wch: 18 }
+  ];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Bitácora");
+  XLSX.writeFile(workbook, `bitacora_${todayISO()}.xlsx`);
 }
 
 async function reload() {
