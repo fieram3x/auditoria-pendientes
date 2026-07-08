@@ -1032,7 +1032,7 @@ function renderIncidents() {
   const rows = filteredIncidents();
   const createAction = canEditIncident(null, "create") ? `<button class="btn primary" data-action="new-incident">Nueva incidencia</button>` : "";
   return `
-    ${pageHead("Incidencias", "Tabla tipo Excel, filtros, acciones y cierre formal.", createAction)}
+    ${pageHead("Incidencias", "Gestiona incidencias de auditoría y su seguimiento.", createAction)}
     <div class="toolbar table-toolbar">
       <strong>${rows.length} registro(s)</strong>
       <div class="toolbar-actions">
