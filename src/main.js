@@ -742,12 +742,12 @@ function renderDashboard() {
       ${metricCard("SLA cumplido", `${pct(slaMet, rows.length)}%`, `${closedMonth.length} cerradas este mes`, "green", trendValues)}
     </div>
     <div class="dashboard-board">
-      ${trendPanel("Tendencia mensual", rows)}
-      ${donutPanel("Cumplimiento SLA", slaMet, rows.length, "En SLA", "Fuera SLA", "#16a34a")}
-      ${barPanel("Carga por departamento", rows, "department", "dashboard-compact-panel")}
-      ${statusPanel(rows)}
-      ${barPanel("Impacto", rows, "impact", "dashboard-compact-panel")}
-      ${attentionPanel([...overdue, ...dueSoon, ...critical])}
+      ${trendPanel("Tendencia mensual", rows, "dashboard-panel-6")}
+      ${donutPanel("Cumplimiento SLA", slaMet, rows.length, "En SLA", "Fuera SLA", "#16a34a", "dashboard-panel-3")}
+      ${barPanel("Carga por departamento", rows, "department", "dashboard-panel-3")}
+      ${piePanel("Impacto", rows, "impact", "dashboard-panel-4")}
+      ${priorityPanel(rows, "dashboard-panel-4")}
+      ${attentionPanel([...overdue, ...dueSoon, ...critical], "dashboard-panel-4")}
     </div>
   `;
 }
@@ -834,7 +834,7 @@ function recentMonths(count = 6) {
   });
 }
 
-function trendPanel(title, rows) {
+function trendPanel(title, rows, extra = "") {
   const months = recentMonths(6);
   const values = months.map((month) => rows.filter((row) => monthKey(row.created_at) === month.key).length);
   const max = Math.max(1, ...values);
@@ -853,7 +853,7 @@ function trendPanel(title, rows) {
   const path = points.map(([x, y], index) => `${index ? "L" : "M"} ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
   const area = `${path} L ${points.at(-1)?.[0].toFixed(1) || left} ${bottom} L ${left} ${bottom} Z`;
   return `
-    <section class="panel chart-panel chart-wide">
+    <section class="panel chart-panel ${extra}">
       <div class="chart-head">
         <h3>${escapeHtml(title)}</h3>
         <span>${escapeHtml(rows.length)} total</span>
@@ -875,11 +875,11 @@ function trendPanel(title, rows) {
   `;
 }
 
-function donutPanel(title, value, total, positiveLabel, negativeLabel, color) {
+function donutPanel(title, value, total, positiveLabel, negativeLabel, color, extra = "") {
   const percent = Number(pct(value, total));
   const remaining = Math.max(0, total - value);
   return `
-    <section class="panel chart-panel donut-panel">
+    <section class="panel chart-panel donut-panel ${extra}">
       <div class="chart-head">
         <h3>${escapeHtml(title)}</h3>
         <span>${escapeHtml(total)} total</span>
@@ -921,11 +921,44 @@ function statusPanel(rows) {
   `;
 }
 
-function priorityPanel(rows) {
+function pieSegments(items) {
+  const total = items.reduce((sum, [, value]) => sum + value, 0);
+  if (!total) return "#eaf1fb 0 100%";
+  let start = 0;
+  return items.map(([label, value], index) => {
+    const end = start + (value / total) * 100;
+    const segment = `${CHART_COLORS[index % CHART_COLORS.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+    start = end;
+    return segment;
+  }).join(", ");
+}
+
+function piePanel(title, rows, key, extra = "") {
+  const items = countBy(rows, key).slice(0, 5);
+  const total = items.reduce((sum, [, value]) => sum + value, 0);
+  return `
+    <section class="panel chart-panel pie-panel ${extra}">
+      <div class="chart-head">
+        <h3>${escapeHtml(title)}</h3>
+        <span>${escapeHtml(total)} total</span>
+      </div>
+      <div class="pie-wrap">
+        <div class="pie-chart" style="--segments:${pieSegments(items)}"></div>
+        <div class="pie-legend">
+          ${items.map(([label, value], index) => `
+            <span><b style="background:${CHART_COLORS[index % CHART_COLORS.length]};"></b>${escapeHtml(label)} <strong>${escapeHtml(value)}</strong></span>
+          `).join("") || `<div class="empty compact-empty">Sin datos</div>`}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function priorityPanel(rows, extra = "") {
   const items = countBy(rows, "priority", PRIORITIES);
   const max = Math.max(1, ...items.map(([, value]) => value));
   return `
-    <section class="panel chart-panel">
+    <section class="panel chart-panel priority-panel ${extra}">
       <div class="chart-head">
         <h3>Prioridad</h3>
         <span>Volumen por nivel</span>
@@ -954,26 +987,28 @@ function barPanel(title, rows, key, extra = "") {
   const max = Math.max(1, ...counts.values());
   const items = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
   return `
-    <section class="panel ${extra}">
+    <section class="panel bar-panel ${extra}">
       <h3>${escapeHtml(title)}</h3>
-      ${items.length ? items.map(([label, value]) => `
-        <div class="bar-row">
-          <span>${escapeHtml(label)}</span>
-          <div class="bar-track"><div class="bar-fill" style="width:${(value / max) * 100}%"></div></div>
-          <b>${value}</b>
-        </div>
-      `).join("") : `<div class="empty">Sin datos</div>`}
+      <div class="bar-list">
+        ${items.length ? items.map(([label, value]) => `
+          <div class="bar-row">
+            <span>${escapeHtml(label)}</span>
+            <div class="bar-track"><div class="bar-fill" style="width:${(value / max) * 100}%"></div></div>
+            <b>${value}</b>
+          </div>
+        `).join("") : `<div class="empty compact-empty">Sin datos</div>`}
+      </div>
     </section>
   `;
 }
 
-function attentionPanel(rows) {
+function attentionPanel(rows, extra = "") {
   const items = [...new Map(rows.map((row) => [row.id, row])).values()]
     .filter((row) => !CLOSED.includes(row.status))
     .sort((a, b) => (slaInfo(a).days ?? 999) - (slaInfo(b).days ?? 999))
     .slice(0, 6);
   return `
-    <section class="panel attention-panel">
+    <section class="panel attention-panel ${extra}">
       <div class="chart-head">
         <h3>Requieren atención</h3>
         <span>${escapeHtml(items.length)} prioridad</span>
