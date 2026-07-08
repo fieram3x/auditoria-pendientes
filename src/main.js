@@ -55,7 +55,6 @@ const state = {
     subject: [],
     priority: [],
     status: [],
-    responsible: [],
     type: [],
     sla: [],
     due_at: [],
@@ -221,7 +220,9 @@ function getCatalog(category) {
 }
 
 function categoryLabel(category) {
-  return category === "Hotel" ? "División" : category;
+  if (category === "Hotel") return "División";
+  if (category === "Área Responsable") return "Área afectada";
+  return category;
 }
 
 function optionList(values, selected = "") {
@@ -659,7 +660,6 @@ function renderFilters({ compact = false, sticky = false } = {}) {
       ${renderMultiFilter("incidents", "type", "Tipo", getDistinct("incident_type"), f.type)}
       ${renderMultiFilter("incidents", "priority", "Prioridad", PRIORITIES, f.priority)}
       ${renderMultiFilter("incidents", "status", "Estatus", STATUSES, f.status)}
-      ${renderMultiFilter("incidents", "responsible", "Responsable", getDistinct("responsible"), f.responsible)}
       <div class="field"><label>Buscar</label><input data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, asunto, descripción..."></div>
     </div>
   `;
@@ -674,7 +674,6 @@ function renderKanbanFilters() {
       ${kanbanSelectFilter("type", "Tipo", getDistinct("incident_type"), f.type)}
       ${kanbanSelectFilter("priority", "Prioridad", PRIORITIES, f.priority)}
       ${kanbanSelectFilter("status", "Estatus", STATUSES, f.status)}
-      ${kanbanSelectFilter("responsible", "Responsable", getDistinct("responsible"), f.responsible)}
       <div class="field"><label>Buscar</label><input data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, asunto, descripción..."></div>
     </div>
   `;
@@ -711,7 +710,6 @@ function renderDashboard() {
   const critical = rows.filter((row) => ["Crítica", "Critica"].includes(row.priority));
   const closedMonth = closed.filter((row) => fmtDate(row.closed_at).slice(3) === fmtDate(new Date()).slice(3));
   const slaMet = rows.filter((row) => slaInfo(row).met).length;
-  const topResponsible = topValue(open, "responsible") || "Sin asignar";
   const topDepartment = topValue(rows, "department") || "-";
   return `
     ${pageHead("Dashboard", "Indicadores ejecutivos y comportamiento operativo.")}
@@ -723,7 +721,6 @@ function renderDashboard() {
       ${kpi("Críticas", critical.length, "Prioridad máxima")}
       ${kpi("Cerradas este mes", closedMonth.length, "Productividad mensual")}
       ${kpi("% Cumplimiento SLA", `${pct(slaMet, rows.length)}%`, "Filtrado actual")}
-      ${kpi("Responsable con más abiertas", topResponsible, "Carga operativa")}
       ${kpi("Departamento con más incidencias", topDepartment, "Concentración")}
     </div>
     <div class="dashboard-visuals">
@@ -953,7 +950,6 @@ function incidentColumns() {
     { key: "incident_type", label: "Tipo", filterKey: "type", sortKey: "incident_type" },
     { key: "priority", label: "Prioridad", filterKey: "priority", sortKey: "priority" },
     { key: "status", label: "Estatus", filterKey: "status", sortKey: "status" },
-    { key: "responsible", label: "Responsable", filterKey: "responsible", sortKey: "responsible" },
     { key: "sla", label: "SLA", filterKey: "sla", sortKey: "sla" },
     { key: "due_at", label: "Compromiso", filterKey: "due_at", sortKey: "due_at", type: "date" }
   ];
@@ -1289,9 +1285,9 @@ function renderDateFilterOptions(column, values, checkedValues) {
   const dateHtml = [...grouped.entries()].map(([year, months]) => {
     const yearValues = [...months.values()].flat();
     return `
-      <div class="excel-date-group" data-date-group>
+      <div class="excel-date-group collapsed" data-date-group>
         <div class="excel-date-row">
-          <button type="button" class="date-toggle" data-date-toggle aria-label="Contraer ${escapeHtml(year)}"></button>
+          <button type="button" class="date-toggle" data-date-toggle aria-label="Expandir ${escapeHtml(year)}"></button>
           <label class="excel-filter-check date-group-check">
             <input type="checkbox" data-column-filter-date-group="${escapeHtml(column.filterKey)}" data-date-prefix="${escapeHtml(year)}" ${yearValues.every((value) => checkedValues.includes(value)) ? "checked" : ""}>
             <span>${escapeHtml(year)}</span>
@@ -1301,9 +1297,9 @@ function renderDateFilterOptions(column, values, checkedValues) {
           ${[...months.entries()].map(([month, days]) => {
             const monthKey = `${year}-${month}`;
             return `
-              <div class="excel-date-group" data-date-group>
+              <div class="excel-date-group collapsed" data-date-group>
                 <div class="excel-date-row month-row">
-                  <button type="button" class="date-toggle" data-date-toggle aria-label="Contraer ${escapeHtml(monthLabel(monthKey))}"></button>
+                  <button type="button" class="date-toggle" data-date-toggle aria-label="Expandir ${escapeHtml(monthLabel(monthKey))}"></button>
                   <label class="excel-filter-check date-group-check">
                     <input type="checkbox" data-column-filter-date-group="${escapeHtml(column.filterKey)}" data-date-prefix="${escapeHtml(monthKey)}" ${days.every((value) => checkedValues.includes(value)) ? "checked" : ""}>
                     <span>${escapeHtml(monthLabel(monthKey))}</span>
@@ -1679,12 +1675,11 @@ function openIncidentModal(row = null) {
     <form id="incidentForm" class="form-grid">
       ${field("hotel", "División", row?.hotel, "select", getCatalog("División"))}
       ${field("department", "Departamento", row?.department, "select", getCatalog("Departamento"))}
-      ${field("responsible_area", "Área responsable", row?.responsible_area, "select", getCatalog("Área Responsable"))}
+      ${field("responsible_area", "Área afectada", row?.responsible_area, "select", getCatalog("Área Responsable"))}
       ${field("incident_type", "Tipo de incidencia", row?.incident_type, "select", getCatalog("Tipo de Incidencia"))}
       ${field("impact", "Impacto", row?.impact, "select", getCatalog("Impacto"))}
       ${field("priority", "Prioridad", row?.priority || "Media", "select", PRIORITIES)}
       ${field("status", "Estatus", row?.status || "Pendiente", "select", STATUSES)}
-      ${field("responsible", "Responsable", row?.responsible)}
       ${field("due_at", "Fecha compromiso", row?.due_at || dueDate(row?.priority || "Media"), "date")}
       ${field("subject", "Asunto", row?.subject, "text", [], "form-full")}
       ${field("description", "Descripción", row?.description, "textarea", [], "form-full")}
@@ -2010,8 +2005,7 @@ function openDetailModal(row) {
           ${detailField("División", row.hotel)}
           ${detailField("Departamento", row.department)}
           ${detailField("Tipo", row.incident_type)}
-          ${detailField("Área responsable", row.responsible_area)}
-          ${detailField("Responsable", row.responsible || "Sin asignar")}
+          ${detailField("Área afectada", row.responsible_area)}
           ${detailField("Asunto", row.subject)}
         </div>
         <div class="detail-description">
@@ -2148,7 +2142,6 @@ function exportExcel(rows) {
     "Tipo",
     "Prioridad",
     "Estatus",
-    "Responsable",
     "SLA",
     "Fecha compromiso",
     "Descripción",
@@ -2165,7 +2158,6 @@ function exportExcel(rows) {
     Tipo: row.incident_type || "",
     Prioridad: row.priority || "",
     Estatus: row.status || "",
-    Responsable: row.responsible || "Sin asignar",
     SLA: slaInfo(row).label,
     "Fecha compromiso": fmtDate(row.due_at),
     Descripción: row.description || "",
@@ -2184,7 +2176,6 @@ function exportExcel(rows) {
     { wch: 26 },
     { wch: 24 },
     { wch: 12 },
-    { wch: 18 },
     { wch: 20 },
     { wch: 18 },
     { wch: 16 },
