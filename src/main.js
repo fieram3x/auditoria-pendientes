@@ -53,11 +53,14 @@ const state = {
     hotel: [],
     department: [],
     subject: [],
+    impact: [],
     priority: [],
     status: [],
     type: [],
     sla: [],
     due_at: [],
+    date_from: "",
+    date_to: "",
     search: ""
   },
   incidentSort: {
@@ -221,7 +224,6 @@ function getCatalog(category) {
 
 function categoryLabel(category) {
   if (category === "Hotel") return "División";
-  if (category === "Área Responsable") return "Área afectada";
   return category;
 }
 
@@ -244,6 +246,11 @@ function matchesFilter(selected, value) {
   const selectedValues = filterValues(selected);
   if (selectedValues.includes(NO_FILTER_MATCH)) return false;
   return !selectedValues.length || selectedValues.includes(normalize(value));
+}
+
+function matchesDateRange(value, from = "", to = "") {
+  const date = dateFilterKey(value);
+  return (!from || date >= from) && (!to || date <= to);
 }
 
 function multiFilterSummary(selected) {
@@ -616,6 +623,8 @@ function rowMatchesIncidentFilters(row, { excludeKey = "" } = {}) {
     row.description
   ].join(" ").toLowerCase();
   return columns.every((column) => column.filterKey === excludeKey || matchesFilter(f[column.filterKey], columnFilterValue(row, column)))
+    && matchesFilter(f.impact, row.impact)
+    && matchesDateRange(row.created_at, f.date_from, f.date_to)
     && (!f.search || text.includes(f.search.toLowerCase()));
 }
 
@@ -652,14 +661,16 @@ function pageHead(title, subtitle, action = "") {
 
 function renderFilters({ compact = false, sticky = false } = {}) {
   const f = state.filters;
-  const classes = ["filters", compact ? "compact-filters" : "", sticky ? "sticky-filters" : ""].filter(Boolean).join(" ");
+  const classes = ["filters", "dashboard-filters", compact ? "compact-filters" : "", sticky ? "sticky-filters" : ""].filter(Boolean).join(" ");
   return `
     <div class="${classes}">
       ${renderMultiFilter("incidents", "hotel", "División", getDistinct("hotel"), f.hotel)}
       ${renderMultiFilter("incidents", "department", "Departamento", getDistinct("department"), f.department)}
-      ${renderMultiFilter("incidents", "type", "Tipo", getDistinct("incident_type"), f.type)}
+      ${renderMultiFilter("incidents", "impact", "Impacto", getDistinct("impact"), f.impact)}
       ${renderMultiFilter("incidents", "priority", "Prioridad", PRIORITIES, f.priority)}
       ${renderMultiFilter("incidents", "status", "Estatus", STATUSES, f.status)}
+      <div class="field"><label>Fecha desde</label><input data-filter="date_from" type="date" value="${escapeHtml(f.date_from)}"></div>
+      <div class="field"><label>Fecha hasta</label><input data-filter="date_to" type="date" value="${escapeHtml(f.date_to)}"></div>
       <div class="field"><label>Buscar</label><input data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, asunto, descripción..."></div>
     </div>
   `;
@@ -671,7 +682,7 @@ function renderKanbanFilters() {
     <div class="filters compact-filters kanban-filters">
       ${kanbanSelectFilter("hotel", "División", getDistinct("hotel"), f.hotel)}
       ${kanbanSelectFilter("department", "Departamento", getDistinct("department"), f.department)}
-      ${kanbanSelectFilter("type", "Tipo", getDistinct("incident_type"), f.type)}
+      ${kanbanSelectFilter("impact", "Impacto", getDistinct("impact"), f.impact)}
       ${kanbanSelectFilter("priority", "Prioridad", PRIORITIES, f.priority)}
       ${kanbanSelectFilter("status", "Estatus", STATUSES, f.status)}
       <div class="field"><label>Buscar</label><input data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, asunto, descripción..."></div>
@@ -726,17 +737,7 @@ function renderDashboard() {
     <div class="dashboard-visuals">
       ${trendPanel("Tendencia mensual", rows)}
       ${donutPanel("Cumplimiento SLA", slaMet, rows.length, "En SLA", "Fuera SLA", "#16a34a")}
-      ${donutPanel("Cierre de incidencias", closed.length, rows.length, "Cerradas", "Abiertas", "#2563eb")}
-    </div>
-    <div class="dashboard-visuals dashboard-visuals-secondary">
-      ${statusPanel(rows)}
-      ${priorityPanel(rows)}
-    </div>
-    <div class="charts">
-      ${barPanel("Incidencias por división", rows, "hotel")}
       ${barPanel("Incidencias por departamento", rows, "department")}
-      ${barPanel("Incidencias por prioridad", rows, "priority")}
-      ${barPanel("Incidencias por estatus", rows, "status")}
     </div>
   `;
 }
@@ -1675,7 +1676,6 @@ function openIncidentModal(row = null) {
     <form id="incidentForm" class="form-grid">
       ${field("hotel", "División", row?.hotel, "select", getCatalog("División"))}
       ${field("department", "Departamento", row?.department, "select", getCatalog("Departamento"))}
-      ${field("responsible_area", "Área afectada", row?.responsible_area, "select", getCatalog("Área Responsable"))}
       ${field("incident_type", "Tipo de incidencia", row?.incident_type, "select", getCatalog("Tipo de Incidencia"))}
       ${field("impact", "Impacto", row?.impact, "select", getCatalog("Impacto"))}
       ${field("priority", "Prioridad", row?.priority || "Media", "select", PRIORITIES)}
@@ -1687,19 +1687,35 @@ function openIncidentModal(row = null) {
     </form>
   `;
   const modal = modalHtml(isEdit ? `Editar ${row.id}` : "Nueva incidencia", body);
-  modal.querySelector("#incidentForm").addEventListener("submit", async (event) => {
+  const form = modal.querySelector("#incidentForm");
+  let submitting = false;
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const payload = formObject(event.currentTarget);
+    if (submitting) return;
+    const payload = formObject(form);
     if (!payload.hotel || !payload.department || !payload.incident_type || !payload.priority || !payload.subject || !payload.description) {
       showToast("Completa división, departamento, tipo, prioridad, asunto y descripción.");
       return;
     }
-    if (isEdit) {
-      await updateIncident(row, payload, "Actualización de incidencia", "Incidencia actualizada.");
-    } else {
-      await createIncident(payload);
+    const submitButton = form.querySelector("button[type='submit']");
+    const defaultLabel = submitButton.textContent;
+    submitting = true;
+    submitButton.disabled = true;
+    submitButton.textContent = isEdit ? "Guardando..." : "Creando...";
+    try {
+      if (isEdit) {
+        await updateIncident(row, payload, "Actualización de incidencia", "Incidencia actualizada.");
+      } else {
+        await createIncident(payload);
+      }
+      modal.close();
+    } catch (error) {
+      console.error(error);
+      showToast(isEdit ? "No fue posible guardar los cambios." : "No fue posible crear la incidencia.");
+      submitting = false;
+      submitButton.disabled = false;
+      submitButton.textContent = defaultLabel;
     }
-    modal.close();
   });
 }
 
@@ -2005,7 +2021,6 @@ function openDetailModal(row) {
           ${detailField("División", row.hotel)}
           ${detailField("Departamento", row.department)}
           ${detailField("Tipo", row.incident_type)}
-          ${detailField("Área afectada", row.responsible_area)}
           ${detailField("Asunto", row.subject)}
         </div>
         <div class="detail-description">

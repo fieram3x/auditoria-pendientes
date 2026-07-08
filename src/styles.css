@@ -266,6 +266,10 @@ p {
   margin-bottom: 12px;
 }
 
+.dashboard-filters {
+  grid-template-columns: repeat(8, minmax(118px, 1fr));
+}
+
 .compact-filters {
   grid-template-columns: repeat(7, minmax(116px, 1fr));
   gap: 7px;
@@ -293,7 +297,7 @@ p {
 }
 
 .kanban-filters {
-  grid-template-columns: repeat(6, minmax(118px, 1fr)) minmax(180px, 1.1fr);
+  grid-template-columns: repeat(5, minmax(118px, 1fr)) minmax(180px, 1.1fr);
   align-items: end;
   gap: 8px;
   margin: 0;
