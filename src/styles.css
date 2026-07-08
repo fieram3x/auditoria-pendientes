@@ -633,12 +633,12 @@ table.excel {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  z-index: 40;
-  width: 270px;
+  z-index: 70;
+  width: 286px;
   padding: 9px;
-  background: #fff;
+  background: #f1f5f9;
   border: 1px solid #9fb2c9;
-  border-radius: 7px;
+  border-radius: 6px;
   box-shadow: 0 18px 44px rgba(15, 23, 42, 0.2);
   color: var(--text);
   text-transform: none;
@@ -661,6 +661,11 @@ table.excel {
   background: #eaf2ff;
 }
 
+.excel-filter-menu .empty {
+  padding: 8px;
+  text-align: left;
+}
+
 .excel-filter-search {
   width: 100%;
   min-height: 32px;
@@ -671,10 +676,10 @@ table.excel {
 }
 
 .excel-filter-options {
-  max-height: 160px;
+  max-height: 170px;
   overflow: auto;
   border: 1px solid #d8e5f2;
-  background: #f8fbff;
+  background: #fff;
   margin: 5px 0 8px;
 }
 
@@ -695,6 +700,11 @@ table.excel {
 
 .excel-filter-check.all {
   font-weight: 750;
+}
+
+.excel-filter-check.add-selection {
+  padding-top: 2px;
+  font-weight: 500;
 }
 
 .excel-filter-check input {

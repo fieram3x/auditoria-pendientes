@@ -14,6 +14,7 @@ const YES_NO = ["No", "Sí"];
 const SLA_DAYS = { "Crítica": 1, Critica: 1, Alta: 2, Media: 3, Baja: 5 };
 const INCIDENT_ID_PREFIX = "INC";
 const INCIDENT_ID_WIDTH = 6;
+const EMPTY_FILTER_LABEL = "(Vacíos)";
 const NO_FILTER_MATCH = "__NO_FILTER_MATCH__";
 const APP_SESSION_STORAGE_KEY = "auditoriaPendientes.session";
 const SESSION_HEADER = "x-app-session-token";
@@ -46,12 +47,17 @@ const state = {
   catalogs: [],
   openFilterMenu: "",
   filters: {
+    id: [],
+    created_at: [],
     hotel: [],
     department: [],
+    subject: [],
     priority: [],
     status: [],
     responsible: [],
     type: [],
+    sla: [],
+    due_at: [],
     search: ""
   },
   incidentSort: {
@@ -596,15 +602,14 @@ function renderPage() {
 }
 
 function filteredIncidents() {
+  const columns = incidentColumns().filter((column) => column.filterKey);
   const rows = state.incidents.filter((row) => {
     const f = state.filters;
-    const text = `${row.id} ${row.hotel} ${row.department} ${row.subject} ${row.incident_type} ${row.description} ${row.responsible}`.toLowerCase();
-    return matchesFilter(f.hotel, row.hotel)
-      && matchesFilter(f.department, row.department)
-      && matchesFilter(f.priority, row.priority)
-      && matchesFilter(f.status, row.status)
-      && matchesFilter(f.responsible, row.responsible)
-      && matchesFilter(f.type, row.incident_type)
+    const text = [
+      ...columns.map((column) => columnFilterValue(row, column)),
+      row.description
+    ].join(" ").toLowerCase();
+    return columns.every((column) => matchesFilter(f[column.filterKey], columnFilterValue(row, column)))
       && (!f.search || text.includes(f.search.toLowerCase()));
   });
   return sortIncidentRows(rows);
@@ -934,21 +939,25 @@ function renderIncidents() {
   `;
 }
 
-function excelTable(rows) {
-  const columns = [
+function incidentColumns() {
+  return [
     { key: "actions", label: "Abrir" },
-    { key: "id", label: "ID", sortKey: "id" },
-    { key: "created_at", label: "Fecha", sortKey: "created_at" },
-    { key: "hotel", label: "División", filterKey: "hotel", sortKey: "hotel", values: getDistinct("hotel") },
-    { key: "department", label: "Departamento", filterKey: "department", sortKey: "department", values: getDistinct("department") },
-    { key: "subject", label: "Asunto", sortKey: "subject" },
-    { key: "incident_type", label: "Tipo", filterKey: "type", sortKey: "incident_type", values: getDistinct("incident_type") },
+    { key: "id", label: "ID", filterKey: "id", sortKey: "id" },
+    { key: "created_at", label: "Fecha", filterKey: "created_at", sortKey: "created_at" },
+    { key: "hotel", label: "División", filterKey: "hotel", sortKey: "hotel" },
+    { key: "department", label: "Departamento", filterKey: "department", sortKey: "department" },
+    { key: "subject", label: "Asunto", filterKey: "subject", sortKey: "subject" },
+    { key: "incident_type", label: "Tipo", filterKey: "type", sortKey: "incident_type" },
     { key: "priority", label: "Prioridad", filterKey: "priority", sortKey: "priority", values: PRIORITIES },
     { key: "status", label: "Estatus", filterKey: "status", sortKey: "status", values: STATUSES },
-    { key: "responsible", label: "Responsable", filterKey: "responsible", sortKey: "responsible", values: getDistinct("responsible") },
-    { key: "sla", label: "SLA", sortKey: "sla" },
-    { key: "due_at", label: "Compromiso", sortKey: "due_at" }
+    { key: "responsible", label: "Responsable", filterKey: "responsible", sortKey: "responsible" },
+    { key: "sla", label: "SLA", filterKey: "sla", sortKey: "sla" },
+    { key: "due_at", label: "Compromiso", filterKey: "due_at", sortKey: "due_at" }
   ];
+}
+
+function excelTable(rows) {
+  const columns = incidentColumns();
   return `
     <div class="excel-wrap">
       <div class="excel-scroller">
@@ -965,6 +974,24 @@ function excelTable(rows) {
       </div>
     </div>
   `;
+}
+
+function filterDisplayValue(value) {
+  const normalized = normalize(value);
+  return normalized || EMPTY_FILTER_LABEL;
+}
+
+function columnFilterValue(row, column) {
+  if (column.key === "created_at" || column.key === "due_at") return filterDisplayValue(fmtDate(row[column.key]));
+  if (column.key === "sla") return filterDisplayValue(slaInfo(row).label);
+  return filterDisplayValue(row[column.key]);
+}
+
+function columnFilterValues(column) {
+  const values = column.values?.length
+    ? column.values.map(filterDisplayValue)
+    : state.incidents.map((row) => columnFilterValue(row, column));
+  return [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "es", { numeric: true, sensitivity: "base" }));
 }
 
 function cellValue(row, key) {
@@ -1148,13 +1175,13 @@ function renderSortOnly(column) {
 }
 
 function renderColumnFilter(column) {
-  const values = [...new Set((column.values || []).map(normalize).filter(Boolean))];
   const rawSelectedValues = filterValues(state.filters[column.filterKey]);
   const isEmptyFilter = rawSelectedValues.includes(NO_FILTER_MATCH);
   const selectedValues = rawSelectedValues.filter((value) => value !== NO_FILTER_MATCH);
+  const values = [...new Set([...selectedValues, ...columnFilterValues(column)])];
   const checkedValues = selectedValues.length ? selectedValues : isEmptyFilter ? [] : values;
   const menuId = `column:${column.filterKey}`;
-  const allChecked = checkedValues.length === values.length;
+  const allChecked = values.length > 0 && checkedValues.length === values.length;
   const sorted = state.incidentSort.key === column.sortKey;
   return `
     <details class="column-filter" data-column-filter-menu="${escapeHtml(menuId)}" ${state.openFilterMenu === menuId ? "open" : ""}>
@@ -1168,6 +1195,10 @@ function renderColumnFilter(column) {
         <label class="excel-filter-check all">
           <input type="checkbox" data-column-filter-select-all="${escapeHtml(column.filterKey)}" ${allChecked ? "checked" : ""}>
           <span>(Seleccionar todo)</span>
+        </label>
+        <label class="excel-filter-check add-selection">
+          <input type="checkbox" data-column-filter-add="${escapeHtml(column.filterKey)}">
+          <span>Agregar la selección actual al filtro</span>
         </label>
         <div class="excel-filter-options">
           ${values.map((value) => `
@@ -1223,9 +1254,27 @@ function columnFilterOptions(menu, key) {
     .filter((option) => option.dataset.columnFilterOption === key);
 }
 
+function visibleColumnFilterOptions(menu, key) {
+  return columnFilterOptions(menu, key).filter((option) => !option.closest("[data-filter-option-row]")?.hidden);
+}
+
 function columnFilterSelectAll(menu, key) {
   return [...(menu?.querySelectorAll("[data-column-filter-select-all]") || [])]
     .find((option) => option.dataset.columnFilterSelectAll === key);
+}
+
+function columnFilterAddSelection(menu, key) {
+  return [...(menu?.querySelectorAll("[data-column-filter-add]") || [])]
+    .find((option) => option.dataset.columnFilterAdd === key);
+}
+
+function updateColumnFilterSelectAll(menu, key) {
+  const options = visibleColumnFilterOptions(menu, key);
+  const selectAll = columnFilterSelectAll(menu, key);
+  if (!selectAll) return;
+  const checkedCount = options.filter((option) => option.checked).length;
+  selectAll.checked = options.length > 0 && checkedCount === options.length;
+  selectAll.indeterminate = checkedCount > 0 && checkedCount < options.length;
 }
 
 function renderPageKeepingInput(input, selector, datasetKey) {
@@ -1250,8 +1299,12 @@ function handleColumnFilterClick(event) {
     const key = target.dataset.columnFilterApply;
     const menu = target.closest(".excel-filter-menu");
     const options = columnFilterOptions(menu, key);
+    const addSelection = columnFilterAddSelection(menu, key)?.checked;
     const selectedValues = options.filter((option) => option.checked).map((option) => option.value);
-    state.filters[key] = selectedValues.length === options.length ? [] : selectedValues.length ? selectedValues : [NO_FILTER_MATCH];
+    const nextValues = addSelection
+      ? [...new Set([...selectedFilterValues(state.filters[key]), ...selectedValues])]
+      : selectedValues;
+    state.filters[key] = nextValues.length === options.length ? [] : nextValues.length ? nextValues : [NO_FILTER_MATCH];
     state.openFilterMenu = "";
     renderPage();
     return;
@@ -1339,26 +1392,29 @@ function bindPageEvents() {
   document.querySelectorAll("[data-filter-menu-search]").forEach((input) => {
     input.addEventListener("input", () => {
       const query = canonicalUser(input.value);
-      input.closest(".excel-filter-menu")?.querySelectorAll("[data-filter-option-row]").forEach((row) => {
+      const menu = input.closest(".excel-filter-menu");
+      const key = input.dataset.filterMenuSearch;
+      menu?.querySelectorAll("[data-filter-option-row]").forEach((row) => {
         row.hidden = !row.dataset.filterText.includes(query);
       });
+      updateColumnFilterSelectAll(menu, key);
     });
   });
   document.querySelectorAll("[data-column-filter-select-all]").forEach((input) => {
     input.addEventListener("change", () => {
       const menu = input.closest(".excel-filter-menu");
-      columnFilterOptions(menu, input.dataset.columnFilterSelectAll).forEach((checkbox) => {
+      const key = input.dataset.columnFilterSelectAll;
+      visibleColumnFilterOptions(menu, key).forEach((checkbox) => {
         checkbox.checked = input.checked;
       });
+      updateColumnFilterSelectAll(menu, key);
     });
   });
   document.querySelectorAll("[data-column-filter-option]").forEach((input) => {
     input.addEventListener("change", () => {
       const key = input.dataset.columnFilterOption;
       const menu = input.closest(".excel-filter-menu");
-      const options = columnFilterOptions(menu, key);
-      const selectAll = columnFilterSelectAll(menu, key);
-      if (selectAll) selectAll.checked = options.length > 0 && options.every((option) => option.checked);
+      updateColumnFilterSelectAll(menu, key);
     });
   });
   document.querySelectorAll("[data-user-filter]").forEach((input) => {
