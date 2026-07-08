@@ -644,6 +644,40 @@ function renderFilters({ compact = false, sticky = false } = {}) {
   `;
 }
 
+function renderKanbanFilters() {
+  const f = state.filters;
+  return `
+    <div class="filters compact-filters kanban-filters">
+      ${kanbanSelectFilter("hotel", "División", getDistinct("hotel"), f.hotel)}
+      ${kanbanSelectFilter("department", "Departamento", getDistinct("department"), f.department)}
+      ${kanbanSelectFilter("type", "Tipo", getDistinct("incident_type"), f.type)}
+      ${kanbanSelectFilter("priority", "Prioridad", PRIORITIES, f.priority)}
+      ${kanbanSelectFilter("status", "Estatus", STATUSES, f.status)}
+      ${kanbanSelectFilter("responsible", "Responsable", getDistinct("responsible"), f.responsible)}
+      <div class="field"><label>Buscar</label><input data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, asunto, descripción..."></div>
+    </div>
+  `;
+}
+
+function kanbanSelectFilter(key, label, values, selected) {
+  const selectedValues = selectedFilterValues(selected);
+  const selectedValue = selectedValues.length === 1 ? selectedValues[0] : "";
+  const specialLabel = filterValues(selected).includes(NO_FILTER_MATCH)
+    ? "0 seleccionados"
+    : selectedValues.length > 1 ? `${selectedValues.length} seleccionados` : "";
+  const options = [...new Set([selectedValue, ...values.map(normalize)].filter(Boolean))];
+  return `
+    <div class="field">
+      <label>${escapeHtml(label)}</label>
+      <select data-filter="${escapeHtml(key)}">
+        <option value="">Todos</option>
+        ${specialLabel ? `<option value="" selected disabled>${escapeHtml(specialLabel)}</option>` : ""}
+        ${options.map((value) => `<option value="${escapeHtml(value)}" ${value === selectedValue && !specialLabel ? "selected" : ""}>${escapeHtml(value)}</option>`).join("")}
+      </select>
+    </div>
+  `;
+}
+
 function getDistinct(field) {
   return [...new Set(state.incidents.map((row) => normalize(row[field])).filter(Boolean))].sort();
 }
@@ -938,38 +972,42 @@ function cellValue(row, key) {
 function renderKanban() {
   const rows = filteredIncidents();
   return `
-    ${pageHead("Kanban", "Seguimiento por estatus con cambio rápido.")}
-    ${renderFilters({ compact: true, sticky: true })}
-    <div class="kanban">
-      ${STATUSES.map((status) => {
-        const group = rows.filter((row) => row.status === status);
-        return `
-          <section class="kanban-col ${slug(status)}">
-            <div class="kanban-head">
-              <span>${escapeHtml(status)}</span>
-              <b>${group.length}</b>
-            </div>
-            <div class="kanban-list">
-              ${group.map((row) => `
-                <article class="kanban-card">
-                  <div class="kanban-card-top">
-                    <button class="row-button" data-action="open-incident" data-id="${escapeHtml(row.id)}">${escapeHtml(row.id)}</button>
-                    ${badge(row.priority)}
-                  </div>
-                  <div class="kanban-card-meta">${escapeHtml(row.hotel || "Sin división")} · ${escapeHtml(row.department || "Sin departamento")}</div>
-                  <strong class="kanban-card-title">${escapeHtml(short(row.subject || row.description || "Sin asunto", 85))}</strong>
-                  <div class="kanban-card-footer">
-                    ${badge(slaInfo(row).label, slaInfo(row).cls)}
-                    <select data-status-change="${escapeHtml(row.id)}" ${!canEditIncident(row, "status") && !canEditIncident(row, "reopen") ? "disabled" : ""}>
-                      ${optionList(statusOptionsFor(row), row.status)}
-                    </select>
-                  </div>
-                </article>
-              `).join("") || `<div class="empty kanban-empty">Sin incidencias.</div>`}
-            </div>
-          </section>
-        `;
-      }).join("")}
+    <div class="kanban-page">
+      ${pageHead("Kanban", "Seguimiento por estatus con cambio rápido.")}
+      ${renderKanbanFilters()}
+      <div class="kanban-board-scroll">
+        <div class="kanban">
+          ${STATUSES.map((status) => {
+            const group = rows.filter((row) => row.status === status);
+            return `
+              <section class="kanban-col ${slug(status)}">
+                <div class="kanban-head">
+                  <span>${escapeHtml(status)}</span>
+                  <b>${group.length}</b>
+                </div>
+                <div class="kanban-list">
+                  ${group.map((row) => `
+                    <article class="kanban-card">
+                      <div class="kanban-card-top">
+                        <button class="row-button" data-action="open-incident" data-id="${escapeHtml(row.id)}">${escapeHtml(row.id)}</button>
+                        ${badge(row.priority)}
+                      </div>
+                      <div class="kanban-card-meta">${escapeHtml(row.hotel || "Sin división")} · ${escapeHtml(row.department || "Sin departamento")}</div>
+                      <strong class="kanban-card-title">${escapeHtml(short(row.subject || row.description || "Sin asunto", 85))}</strong>
+                      <div class="kanban-card-footer">
+                        ${badge(slaInfo(row).label, slaInfo(row).cls)}
+                        <select data-status-change="${escapeHtml(row.id)}" ${!canEditIncident(row, "status") && !canEditIncident(row, "reopen") ? "disabled" : ""}>
+                          ${optionList(statusOptionsFor(row), row.status)}
+                        </select>
+                      </div>
+                    </article>
+                  `).join("") || `<div class="empty kanban-empty">Sin incidencias.</div>`}
+                </div>
+              </section>
+            `;
+          }).join("")}
+        </div>
+      </div>
     </div>
   `;
 }
@@ -1263,7 +1301,8 @@ function bindPageEvents() {
     });
   });
   document.querySelectorAll("[data-filter]").forEach((input) => {
-    input.addEventListener("input", () => {
+    const eventName = input.tagName === "SELECT" ? "change" : "input";
+    input.addEventListener(eventName, () => {
       state.filters[input.dataset.filter] = input.value;
       renderPageKeepingInput(input, "[data-filter]", "filter");
     });
