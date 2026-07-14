@@ -1,5 +1,6 @@
 import { PostgrestClient } from "@supabase/postgrest-js";
 import * as XLSX from "xlsx";
+import { calculateSla, dashboardMetrics, dueDateFor, isStrongPassword, pageSlice } from "./domain.js";
 import "./styles.css";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -11,15 +12,17 @@ const PRIORITIES = ["Baja", "Media", "Alta", "Crítica"];
 const ROLES = ["Administrador", "Supervisor", "Auditor", "Consulta"];
 const PROFILE_STATUSES = ["Activo", "Inactivo"];
 const YES_NO = ["No", "Sí"];
-const SLA_DAYS = { "Crítica": 1, Critica: 1, Alta: 2, Media: 3, Baja: 5 };
-const INCIDENT_ID_PREFIX = "INC";
-const INCIDENT_ID_WIDTH = 6;
 const EMPTY_FILTER_LABEL = "(Vacíos)";
 const NO_FILTER_MATCH = "__NO_FILTER_MATCH__";
 const APP_SESSION_STORAGE_KEY = "auditoriaPendientes.session";
+const APP_UI_STORAGE_KEY = "auditoriaPendientes.ui";
 const SESSION_HEADER = "x-app-session-token";
+const AUDIT_PAGE_SIZE = 100;
+const INCIDENT_FETCH_PAGE_SIZE = 500;
+const INCIDENT_PAGE_SIZES = [25, 50, 100];
+const SESSION_IDLE_MS = 30 * 60 * 1000;
+const SESSION_HEARTBEAT_MS = 5 * 60 * 1000;
 const USER_COLUMNS = "id, username, display_name, role, status, last_access_at, failed_attempts, blocked, must_change_password, created_at, updated_at";
-const PASSWORD_MASK = "********";
 const CHART_COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#ef4444", "#8b5cf6", "#0f766e", "#64748b"];
 const HIDDEN_CATALOG_CATEGORIES = ["Área Responsable", "Causa raíz", "Acción tomada"];
 const CATALOG_DEFAULTS = {
@@ -33,6 +36,9 @@ const CATALOG_DEFAULTS = {
 
 const app = document.querySelector("#app");
 let supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createAppClient() : null;
+let lastUserActivityAt = Date.now();
+let sessionMaintenanceId = null;
+let activityListenersInstalled = false;
 
 const state = {
   session: null,
@@ -43,6 +49,14 @@ const state = {
   audit: [],
   profiles: [],
   catalogs: [],
+  filtersOpen: false,
+  showFinalized: false,
+  incidentPage: 1,
+  incidentPageSize: 25,
+  tableDensity: "compact",
+  visibleColumns: ["id", "created_at", "hotel", "department", "subject", "incident_type", "priority", "status", "sla", "due_at"],
+  auditHasMore: false,
+  auditLoadingMore: false,
   openFilterMenu: "",
   filterMenuPosition: { top: 0, left: 0 },
   filters: {
@@ -114,7 +128,6 @@ const fmtDate = (value, withTime = false) => {
   }).format(date);
 };
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const nowISO = () => new Date().toISOString();
 const badge = (value, extra = "") => `<span class="badge ${slug(value)} ${extra}">${escapeHtml(value || "Sin dato")}</span>`;
 const short = (value, max = 120) => normalize(value).length > max ? `${normalize(value).slice(0, max - 3)}...` : normalize(value);
 const role = () => state.profile?.role || "Auditor";
@@ -125,18 +138,39 @@ const canManageCatalogs = () => isAdmin() || isSupervisor();
 
 const boolText = (value) => value ? "Sí" : "No";
 const boolValue = (value) => ["si", "sí", "true", "1", "yes"].includes(canonicalUser(value));
-const withPasswordMask = (row) => ({ ...row, password_mask: PASSWORD_MASK });
+const ICON_PATHS = {
+  shield: '<path d="M12 3 5.5 5.5v5.8c0 4.2 2.7 7.8 6.5 9.2 3.8-1.4 6.5-5 6.5-9.2V5.5L12 3Z"/><path d="m9.5 12 1.6 1.6 3.7-4"/>',
+  dashboard: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
+  incidents: '<path d="M7 3h10v4H7z"/><path d="M5 5H4v16h16V5h-1"/><path d="M8 12h8M8 16h6"/>',
+  kanban: '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="7" rx="1"/>',
+  audit: '<path d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+  users: '<path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 20v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  catalogs: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.38.28.73.64 1 .99.25.34.4.75.4 1.01v1c0 .4-.15.77-.4 1Z"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/>'
+};
+
+function icon(name, extra = "") {
+  return `<svg class="icon ${escapeHtml(extra)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name] || ICON_PATHS.incidents}</svg>`;
+}
 
 function readStoredSession() {
   try {
-    const saved = JSON.parse(localStorage.getItem(APP_SESSION_STORAGE_KEY) || "null");
+    const current = sessionStorage.getItem(APP_SESSION_STORAGE_KEY);
+    const legacy = localStorage.getItem(APP_SESSION_STORAGE_KEY);
+    const saved = JSON.parse(current || legacy || "null");
     if (!saved?.token || !saved?.expires_at) return null;
     if (new Date(saved.expires_at).getTime() <= Date.now()) {
+      sessionStorage.removeItem(APP_SESSION_STORAGE_KEY);
       localStorage.removeItem(APP_SESSION_STORAGE_KEY);
       return null;
     }
+    if (!current && legacy) sessionStorage.setItem(APP_SESSION_STORAGE_KEY, legacy);
+    localStorage.removeItem(APP_SESSION_STORAGE_KEY);
     return { token: saved.token, expires_at: saved.expires_at };
   } catch {
+    sessionStorage.removeItem(APP_SESSION_STORAGE_KEY);
     localStorage.removeItem(APP_SESSION_STORAGE_KEY);
     return null;
   }
@@ -144,13 +178,15 @@ function readStoredSession() {
 
 function persistSession(session) {
   if (!session?.token) {
+    sessionStorage.removeItem(APP_SESSION_STORAGE_KEY);
     localStorage.removeItem(APP_SESSION_STORAGE_KEY);
     return;
   }
-  localStorage.setItem(APP_SESSION_STORAGE_KEY, JSON.stringify({
+  sessionStorage.setItem(APP_SESSION_STORAGE_KEY, JSON.stringify({
     token: session.token,
     expires_at: session.expires_at
   }));
+  localStorage.removeItem(APP_SESSION_STORAGE_KEY);
 }
 
 function setInternalSession(session) {
@@ -163,42 +199,36 @@ function sessionToken() {
   return state.session?.token || "";
 }
 
-function incidentId() {
-  const maxSequentialId = state.incidents.reduce((max, row) => {
-    const match = normalize(row.id).match(/^INC-(\d{6})$/);
-    return match ? Math.max(max, Number(match[1])) : max;
-  }, 0);
-  const nextNumber = Math.max(maxSequentialId, state.incidents.length) + 1;
-  const maxAllowed = 10 ** INCIDENT_ID_WIDTH - 1;
-  if (nextNumber > maxAllowed) throw new Error("Se agotó la secuencia disponible para incidencias.");
-  return `${INCIDENT_ID_PREFIX}-${String(nextNumber).padStart(INCIDENT_ID_WIDTH, "0")}`;
+function startSessionMaintenance() {
+  if (sessionMaintenanceId) return;
+  lastUserActivityAt = Date.now();
+  if (!activityListenersInstalled) {
+    const registerActivity = () => { lastUserActivityAt = Date.now(); };
+    ["pointerdown", "keydown"].forEach((eventName) => document.addEventListener(eventName, registerActivity, { passive: true }));
+    activityListenersInstalled = true;
+  }
+  sessionMaintenanceId = window.setInterval(async () => {
+    if (!sessionToken()) return;
+    if (Date.now() - lastUserActivityAt >= SESSION_IDLE_MS) {
+      showToast("La sesión se cerró por inactividad.");
+      await logout();
+      return;
+    }
+    try {
+      await ensureProfile();
+    } catch (error) {
+      console.warn("Session heartbeat failed", error);
+      await logout();
+    }
+  }, SESSION_HEARTBEAT_MS);
 }
 
 function dueDate(priority, createdAt = new Date()) {
-  const base = new Date(createdAt);
-  const days = SLA_DAYS[priority] ?? 3;
-  base.setDate(base.getDate() + days);
-  return base.toISOString().slice(0, 10);
+  return dueDateFor(priority, createdAt);
 }
 
 function slaInfo(row) {
-  const status = normalize(row.status);
-  const due = row.actual_due_at || row.due_at || dueDate(row.priority || "Media", row.created_at);
-  const dueDateObj = new Date(`${due}T00:00:00`);
-
-  if (CLOSED.includes(status)) {
-    if (!row.closed_at || Number.isNaN(dueDateObj.getTime())) return { label: "Cerrado", days: null, met: true, cls: "cerrado" };
-    const closed = new Date(row.closed_at);
-    const met = closed <= new Date(`${due}T23:59:59`);
-    return { label: met ? "Cerrado en SLA" : "Cerrado fuera SLA", days: null, met, cls: met ? "cerrado" : "vencido" };
-  }
-
-  const today = new Date(`${todayISO()}T00:00:00`);
-  const days = Math.ceil((dueDateObj - today) / 86400000);
-  if (days < 0) return { label: `Vencido ${Math.abs(days)}d`, days, met: false, cls: "vencido" };
-  if (days === 0) return { label: "Vence hoy", days, met: true, cls: "media" };
-  if (days === 1) return { label: "Vence en 1d", days, met: true, cls: "media" };
-  return { label: `En tiempo (${days}d)`, days, met: true, cls: "baja" };
+  return calculateSla(row);
 }
 
 function canEditIncident(row, action = "edit") {
@@ -219,7 +249,7 @@ function statusOptionsFor(row) {
 
 function incidentFormStatusOptions(row = null) {
   const openStatuses = STATUSES.filter((status) => !CLOSED.includes(status));
-  return row && CLOSED.includes(row.status) ? [row.status, ...openStatuses] : openStatuses;
+  return row && CLOSED.includes(row.status) ? [row.status] : openStatuses;
 }
 
 function getCatalog(category) {
@@ -275,7 +305,7 @@ function renderMultiFilter(scope, key, label, values, selected) {
   const menuId = `${scope}:${key}`;
   return `
     <div class="field">
-      <label>${escapeHtml(label)}</label>
+      <span class="field-label">${escapeHtml(label)}</span>
       <details class="multi-select" data-multi-filter-menu="${escapeHtml(menuId)}" ${state.openFilterMenu === menuId ? "open" : ""}>
         <summary><span>${escapeHtml(multiFilterSummary(selectedValues))}</span></summary>
         <div class="multi-options">
@@ -295,9 +325,38 @@ function renderMultiFilter(scope, key, label, values, selected) {
 function showToast(message) {
   const toast = document.createElement("div");
   toast.className = "toast";
+  toast.setAttribute("role", "status");
+  toast.setAttribute("aria-live", "polite");
   toast.textContent = message;
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 2600);
+}
+
+function setFormBusy(form, busy, label = "Procesando...") {
+  const button = form?.querySelector("button[type='submit']");
+  if (!button) return;
+  if (busy) {
+    button.dataset.defaultLabel = button.textContent;
+    button.textContent = label;
+    button.disabled = true;
+    form.setAttribute("aria-busy", "true");
+  } else {
+    button.textContent = button.dataset.defaultLabel || button.textContent;
+    button.disabled = false;
+    form.removeAttribute("aria-busy");
+  }
+}
+
+function setAppBusy(busy) {
+  document.querySelector("#appBusy")?.remove();
+  if (!busy) return;
+  const overlay = document.createElement("div");
+  overlay.id = "appBusy";
+  overlay.className = "app-busy";
+  overlay.setAttribute("role", "status");
+  overlay.setAttribute("aria-live", "polite");
+  overlay.innerHTML = '<span class="spinner" aria-hidden="true"></span><b>Actualizando datos...</b>';
+  document.body.appendChild(overlay);
 }
 
 async function requireOk(result, fallback = "No se pudo completar la operación.") {
@@ -305,16 +364,11 @@ async function requireOk(result, fallback = "No se pudo completar la operación.
   return result.data;
 }
 
-function isDuplicateIdError(error) {
-  const message = String(error?.message || "").toLowerCase();
-  return message.includes("duplicate") || message.includes("unique") || message.includes("already exists");
-}
-
 function friendlyLoginError(error) {
   const reason = String(error?.reason || error?.message || "").toLowerCase();
   if (reason.includes("inactive")) return "Usuario inactivo. Contacte al administrador.";
   if (reason.includes("blocked")) return "Usuario bloqueado. Contacte al administrador.";
-  if (reason.includes("weak_password")) return "La nueva contraseña debe tener al menos 8 caracteres.";
+  if (reason.includes("weak_password")) return "Use al menos 12 caracteres, mayúscula, minúscula, número y símbolo.";
   return "Usuario o contraseña incorrectos.";
 }
 
@@ -330,7 +384,7 @@ function friendlyUserSaveError(error) {
   const message = String(error?.message || error?.reason || "").trim();
   const lower = message.toLowerCase();
   if (lower.includes("duplicate_username")) return "Ya existe un usuario con ese nombre de usuario.";
-  if (lower.includes("weak_password")) return "La contraseña inicial debe tener al menos 8 caracteres.";
+  if (lower.includes("weak_password")) return "La contraseña debe tener 12 caracteres, mayúscula, minúscula, número y símbolo.";
   if (lower.includes("legacy_user")) return "Falta actualizar la tabla audit_log en Supabase. Ejecuta el SQL actualizado y vuelve a intentar.";
   if (lower.includes("forbidden")) return "No tienes permisos para guardar usuarios.";
   return message ? `No fue posible guardar el usuario: ${message}` : "No fue posible guardar el usuario. Verifica los datos e intenta nuevamente.";
@@ -342,6 +396,50 @@ function clearSessionState() {
   state.incidents = [];
   state.audit = [];
   state.profiles = [];
+}
+
+function persistUiState() {
+  localStorage.setItem(APP_UI_STORAGE_KEY, JSON.stringify({
+    filters: state.filters,
+    filtersOpen: state.filtersOpen,
+    incidentPageSize: state.incidentPageSize,
+    tableDensity: state.tableDensity,
+    visibleColumns: state.visibleColumns,
+    showFinalized: state.showFinalized
+  }));
+}
+
+function restoreUiState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(APP_UI_STORAGE_KEY) || "null");
+    if (!saved) return;
+    if (saved.filters && typeof saved.filters === "object") {
+      Object.keys(state.filters).forEach((key) => {
+        if (Object.hasOwn(saved.filters, key)) state.filters[key] = saved.filters[key];
+      });
+    }
+    state.filtersOpen = Boolean(saved.filtersOpen);
+    if (INCIDENT_PAGE_SIZES.includes(Number(saved.incidentPageSize))) state.incidentPageSize = Number(saved.incidentPageSize);
+    if (["compact", "comfortable"].includes(saved.tableDensity)) state.tableDensity = saved.tableDensity;
+    if (Array.isArray(saved.visibleColumns) && saved.visibleColumns.length) state.visibleColumns = saved.visibleColumns;
+    state.showFinalized = Boolean(saved.showFinalized);
+  } catch {
+    localStorage.removeItem(APP_UI_STORAGE_KEY);
+  }
+}
+
+function resetIncidentFilters() {
+  Object.keys(state.filters).forEach((key) => {
+    state.filters[key] = Array.isArray(state.filters[key]) ? [] : "";
+  });
+  state.incidentPage = 1;
+  state.openFilterMenu = "";
+  persistUiState();
+}
+
+function incidentFiltersChanged() {
+  state.incidentPage = 1;
+  persistUiState();
 }
 
 async function init() {
@@ -378,7 +476,7 @@ function renderConfigMissing() {
     <main class="config-shell">
       <section class="config-card">
         <div class="brand-row">
-          <div class="brand-mark">🛡️</div>
+          <div class="brand-mark">${icon("shield")}</div>
           <div>
             <h1>Falta configuración</h1>
             <p class="muted">No fue posible cargar la conexión de datos.</p>
@@ -394,8 +492,9 @@ function renderLogin(error = "") {
   app.innerHTML = `
     <main class="login-shell">
       <section class="login-card">
+        <div class="login-eyebrow">Portal interno de auditoría</div>
         <div class="brand-row">
-          <div class="brand-mark">🛡️</div>
+          <div class="brand-mark">${icon("shield")}</div>
           <div>
             <h1>Auditoría Pendientes</h1>
             <p class="muted">Control y seguimiento de incidencias</p>
@@ -404,21 +503,34 @@ function renderLogin(error = "") {
         ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
         <form id="loginForm" class="form-grid" autocomplete="off">
           <div class="field form-full">
-            <label>Usuario</label>
-            <input name="login" type="text" required value="" placeholder="Inserte su usuario" autocomplete="off" autocapitalize="none" spellcheck="false">
+            <label for="login-user">Usuario</label>
+            <input id="login-user" name="login" type="text" required value="" placeholder="Inserte su usuario" autocomplete="username" autocapitalize="none" spellcheck="false">
           </div>
           <div class="field form-full">
-            <label>Contraseña</label>
-            <input name="password" type="password" required value="" placeholder="Inserte su contraseña" autocomplete="new-password">
+            <label for="login-password">Contraseña</label>
+            <div class="password-control">
+              <input id="login-password" name="password" type="password" required value="" placeholder="Inserte su contraseña" autocomplete="current-password">
+              <button type="button" class="password-toggle" data-password-toggle="login-password" aria-label="Mostrar contraseña">${icon("eye")}</button>
+            </div>
           </div>
           <button class="btn primary form-full" type="submit">Entrar</button>
         </form>
+        <p class="login-help">Si no puede acceder, solicite al administrador el restablecimiento de su contraseña.</p>
       </section>
     </main>
   `;
+  document.querySelector("[data-password-toggle]")?.addEventListener("click", (event) => {
+    const target = document.querySelector(`#${event.currentTarget.dataset.passwordToggle}`);
+    if (!target) return;
+    const visible = target.type === "text";
+    target.type = visible ? "password" : "text";
+    event.currentTarget.setAttribute("aria-label", visible ? "Mostrar contraseña" : "Ocultar contraseña");
+  });
   document.querySelector("#loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setFormBusy(formElement, true, "Validando...");
     try {
       await loginWithUsername(form.get("login"), form.get("password"));
     } catch (error) {
@@ -435,7 +547,7 @@ function renderPasswordChange(error = "") {
     <main class="login-shell">
       <section class="login-card">
         <div class="brand-row">
-          <div class="brand-mark">🛡️</div>
+          <div class="brand-mark">${icon("shield")}</div>
           <div>
             <h1>Cambiar contraseña</h1>
             <p class="muted">Actualice su contraseña para continuar.</p>
@@ -444,16 +556,16 @@ function renderPasswordChange(error = "") {
         ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
         <form id="passwordChangeForm" class="form-grid" autocomplete="off">
           <div class="field form-full">
-            <label>Contraseña actual</label>
-            <input name="current_password" type="password" required autocomplete="current-password">
+            <label for="current-password">Contraseña actual</label>
+            <input id="current-password" name="current_password" type="password" required autocomplete="current-password">
           </div>
           <div class="field form-full">
-            <label>Nueva contraseña</label>
-            <input name="new_password" type="password" required autocomplete="new-password">
+            <label for="new-password">Nueva contraseña</label>
+            <input id="new-password" name="new_password" type="password" minlength="12" required autocomplete="new-password">
           </div>
           <div class="field form-full">
-            <label>Confirmar contraseña</label>
-            <input name="confirm_password" type="password" required autocomplete="new-password">
+            <label for="confirm-password">Confirmar contraseña</label>
+            <input id="confirm-password" name="confirm_password" type="password" minlength="12" required autocomplete="new-password">
           </div>
           <button class="btn primary form-full" type="submit">Guardar contraseña</button>
           <button class="btn ghost form-full" type="button" id="passwordLogoutBtn">Cerrar sesión</button>
@@ -470,7 +582,12 @@ function renderPasswordChange(error = "") {
       renderPasswordChange("Las contraseñas no coinciden.");
       return;
     }
+    if (!isStrongPassword(nextPassword)) {
+      renderPasswordChange("Use al menos 12 caracteres, mayúscula, minúscula, número y símbolo.");
+      return;
+    }
     try {
+      setFormBusy(event.currentTarget, true, "Guardando...");
       await changeOwnPassword(form.get("current_password"), nextPassword);
       showToast("Contraseña actualizada.");
       await loadAppData();
@@ -525,6 +642,10 @@ async function logout() {
     console.warn("Logout failed", error);
   }
   setInternalSession(null);
+  if (sessionMaintenanceId) {
+    window.clearInterval(sessionMaintenanceId);
+    sessionMaintenanceId = null;
+  }
   clearSessionState();
   renderLogin();
 }
@@ -543,38 +664,76 @@ async function ensureProfile() {
 async function loadAppData() {
   state.loading = true;
   await ensureProfile();
+  const profileRequest = canManageUsers()
+    ? supabase.from("app_users").select(USER_COLUMNS).order("display_name")
+    : Promise.resolve({ data: [], error: null });
   const [incidents, audit, profiles, catalogs] = await Promise.all([
-    supabase.from("incidents").select("*").order("created_at", { ascending: false }),
-    supabase.from("audit_log").select("*").order("occurred_at", { ascending: false }).limit(500),
-    supabase.from("app_users").select(USER_COLUMNS).order("display_name"),
+    fetchIncidentSnapshot(),
+    supabase.from("audit_log").select("*").order("occurred_at", { ascending: false }).range(0, AUDIT_PAGE_SIZE - 1),
+    profileRequest,
     supabase.from("catalogs").select("*").order("category").order("value")
   ]);
   state.incidents = await requireOk(incidents);
   state.audit = await requireOk(audit);
-  state.profiles = (await requireOk(profiles)).map(withPasswordMask);
+  state.auditHasMore = state.audit.length === AUDIT_PAGE_SIZE;
+  state.profiles = await requireOk(profiles);
   state.catalogs = await requireOk(catalogs);
   state.loading = false;
 }
 
+async function fetchIncidentSnapshot() {
+  const rows = [];
+  for (let start = 0; ; start += INCIDENT_FETCH_PAGE_SIZE) {
+    const result = await supabase
+      .from("incidents")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(start, start + INCIDENT_FETCH_PAGE_SIZE - 1);
+    if (result.error) return result;
+    rows.push(...result.data);
+    if (result.data.length < INCIDENT_FETCH_PAGE_SIZE) break;
+  }
+  return { data: rows, error: null };
+}
+
+async function loadMoreAudit() {
+  if (state.auditLoadingMore || !state.auditHasMore) return;
+  state.auditLoadingMore = true;
+  renderPage();
+  try {
+    const start = state.audit.length;
+    const rows = await requireOk(
+      await supabase.from("audit_log").select("*").order("occurred_at", { ascending: false }).range(start, start + AUDIT_PAGE_SIZE - 1),
+      "No se pudieron cargar más movimientos."
+    );
+    state.audit.push(...rows);
+    state.auditHasMore = rows.length === AUDIT_PAGE_SIZE;
+  } finally {
+    state.auditLoadingMore = false;
+    renderPage();
+  }
+}
+
 function renderApp() {
+  startSessionMaintenance();
   const pageMeta = {
-    dashboard: { label: "Dashboard", icon: "📊" },
-    incidents: { label: "Pendientes", icon: "📋" },
-    kanban: { label: "Kanban", icon: "▦" },
-    audit: { label: "Bitácora", icon: "🧾" },
-    users: { label: "Usuarios", icon: "👥" },
-    catalogs: { label: "Catálogos", icon: "⚙️" }
+    dashboard: { label: "Dashboard", icon: "dashboard" },
+    incidents: { label: "Pendientes", icon: "incidents" },
+    kanban: { label: "Kanban", icon: "kanban" },
+    audit: { label: "Bitácora", icon: "audit" },
+    users: { label: "Usuarios", icon: "users" },
+    catalogs: { label: "Catálogos", icon: "catalogs" }
   };
   const pages = ["dashboard", "incidents", "kanban", "audit", ...(canManageUsers() ? ["users"] : []), ...(canManageCatalogs() ? ["catalogs"] : [])];
   app.innerHTML = `
     <div class="app-layout">
-      <aside class="sidebar">
+      <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
         <div class="side-title">
-          <div class="brand-mark">🛡️</div>
+          <div class="brand-mark">${icon("shield")}</div>
           <div><strong>Auditoría</strong><span>Panel de control</span></div>
         </div>
         <nav class="nav">
-          ${pages.map((page) => `<button data-page="${page}" class="${state.page === page ? "active" : ""}"><span>${pageMeta[page].icon}</span>${pageMeta[page].label}</button>`).join("")}
+          ${pages.map((page) => `<button data-page="${page}" class="${state.page === page ? "active" : ""}" ${state.page === page ? 'aria-current="page"' : ""}><span>${icon(pageMeta[page].icon)}</span>${pageMeta[page].label}</button>`).join("")}
         </nav>
         <div class="sidebar-footer">
           <span>${escapeHtml(state.profile?.display_name || state.profile?.username || "Usuario")}</span>
@@ -582,11 +741,15 @@ function renderApp() {
           <button class="btn ghost" id="logoutBtn">Cerrar sesión</button>
         </div>
       </aside>
+      <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="Cerrar menú"></button>
       <main class="content">
         <header class="topbar">
-          <div>
-            <h1>Auditoría Pendientes</h1>
-            <div class="muted">Sistema de gestión de incidencias de auditoría</div>
+          <div class="topbar-context">
+            <button class="mobile-menu-button" id="mobileMenuBtn" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="Abrir menú">${icon("menu")}</button>
+            <div>
+              <span>Auditoría Pendientes</span>
+              <strong>${escapeHtml(pageMeta[state.page]?.label || "Panel")}</strong>
+            </div>
           </div>
           <div class="user-chip">${escapeHtml(state.profile?.display_name || "")} · ${escapeHtml(role())}</div>
         </header>
@@ -601,6 +764,13 @@ function renderApp() {
       renderApp();
     });
   });
+  const toggleSidebar = (open) => {
+    document.querySelector("#sidebar")?.classList.toggle("open", open);
+    document.querySelector("#sidebarBackdrop")?.classList.toggle("open", open);
+    document.querySelector("#mobileMenuBtn")?.setAttribute("aria-expanded", String(open));
+  };
+  document.querySelector("#mobileMenuBtn")?.addEventListener("click", () => toggleSidebar(!document.querySelector("#sidebar")?.classList.contains("open")));
+  document.querySelector("#sidebarBackdrop")?.addEventListener("click", () => toggleSidebar(false));
   document.querySelector("#logoutBtn").addEventListener("click", logout);
   renderPage();
 }
@@ -622,7 +792,7 @@ function filteredIncidents() {
 }
 
 function rowMatchesIncidentFilters(row, { excludeKey = "" } = {}) {
-  const columns = incidentColumns().filter((column) => column.filterKey);
+  const columns = allIncidentColumns().filter((column) => column.filterKey);
   const f = state.filters;
   const text = [
     ...columns.map((column) => columnFilterSearchText(row, column)),
@@ -665,20 +835,58 @@ function pageHead(title, subtitle, action = "") {
   `;
 }
 
+function activeFilterEntries() {
+  const labels = {
+    hotel: "División",
+    department: "Departamento",
+    impact: "Impacto",
+    priority: "Prioridad",
+    status: "Estatus",
+    date_from: "Desde",
+    date_to: "Hasta",
+    search: "Búsqueda"
+  };
+  return Object.entries(labels).flatMap(([key, label]) => {
+    const values = filterValues(state.filters[key]);
+    return values.map((value) => ({ key, label, value }));
+  });
+}
+
+function renderActiveFilterChips() {
+  const entries = activeFilterEntries();
+  if (!entries.length) return "";
+  return `
+    <div class="active-filters" aria-label="Filtros activos">
+      ${entries.map(({ key, label, value }) => `<button type="button" class="filter-chip" data-filter-chip="${escapeHtml(key)}"><span>${escapeHtml(label)}:</span> ${escapeHtml(value)} <b aria-hidden="true">×</b></button>`).join("")}
+      <button type="button" class="filter-reset" data-filter-reset>Limpiar todo</button>
+    </div>
+  `;
+}
+
 function renderFilters({ compact = false, sticky = false } = {}) {
   const f = state.filters;
   const classes = ["filters", "dashboard-filters", compact ? "compact-filters" : "", sticky ? "sticky-filters" : ""].filter(Boolean).join(" ");
   return `
-    <div class="${classes}">
-      ${renderMultiFilter("incidents", "hotel", "División", getDistinct("hotel"), f.hotel)}
-      ${renderMultiFilter("incidents", "department", "Departamento", getDistinct("department"), f.department)}
-      ${renderMultiFilter("incidents", "impact", "Impacto", getDistinct("impact"), f.impact)}
-      ${renderMultiFilter("incidents", "priority", "Prioridad", PRIORITIES, f.priority)}
-      ${renderMultiFilter("incidents", "status", "Estatus", STATUSES, f.status)}
-      <div class="field"><label>Fecha desde</label><input data-filter="date_from" type="date" value="${escapeHtml(f.date_from)}"></div>
-      <div class="field"><label>Fecha hasta</label><input data-filter="date_to" type="date" value="${escapeHtml(f.date_to)}"></div>
-      <div class="field"><label>Buscar</label><input data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, asunto, descripción..."></div>
-    </div>
+    <section class="filter-panel">
+      <div class="filter-panel-head">
+        <button type="button" class="btn filter-toggle" data-filter-toggle aria-expanded="${state.filtersOpen}">Filtros ${activeFilterEntries().length ? `(${activeFilterEntries().length})` : ""}</button>
+        <div class="filter-presets" aria-label="Vistas rápidas">
+          <button type="button" data-filter-preset="open">Abiertas</button>
+          <button type="button" data-filter-preset="critical">Críticas abiertas</button>
+        </div>
+      </div>
+      <div class="${classes}" ${state.filtersOpen ? "" : "hidden"}>
+        ${renderMultiFilter("incidents", "hotel", "División", getDistinct("hotel"), f.hotel)}
+        ${renderMultiFilter("incidents", "department", "Departamento", getDistinct("department"), f.department)}
+        ${renderMultiFilter("incidents", "impact", "Impacto", getDistinct("impact"), f.impact)}
+        ${renderMultiFilter("incidents", "priority", "Prioridad", PRIORITIES, f.priority)}
+        ${renderMultiFilter("incidents", "status", "Estatus", STATUSES, f.status)}
+        <div class="field"><label for="filter-date-from">Fecha desde</label><input id="filter-date-from" data-filter="date_from" type="date" value="${escapeHtml(f.date_from)}"></div>
+        <div class="field"><label for="filter-date-to">Fecha hasta</label><input id="filter-date-to" data-filter="date_to" type="date" value="${escapeHtml(f.date_to)}"></div>
+        <div class="field"><label for="filter-search">Buscar</label><input id="filter-search" data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, asunto, descripción..."></div>
+      </div>
+      ${renderActiveFilterChips()}
+    </section>
   `;
 }
 
@@ -691,7 +899,7 @@ function renderKanbanFilters() {
       ${kanbanSelectFilter("impact", "Impacto", getDistinct("impact"), f.impact)}
       ${kanbanSelectFilter("priority", "Prioridad", PRIORITIES, f.priority)}
       ${kanbanSelectFilter("status", "Estatus", STATUSES, f.status)}
-      <div class="field"><label>Buscar</label><input data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, asunto, descripción..."></div>
+      <div class="field"><label for="kanban-filter-search">Buscar</label><input id="kanban-filter-search" data-filter="search" value="${escapeHtml(f.search)}" placeholder="ID, asunto, descripción..."></div>
     </div>
   `;
 }
@@ -703,10 +911,11 @@ function kanbanSelectFilter(key, label, values, selected) {
     ? "0 seleccionados"
     : selectedValues.length > 1 ? `${selectedValues.length} seleccionados` : "";
   const options = [...new Set([selectedValue, ...values.map(normalize)].filter(Boolean))];
+  const id = `kanban-filter-${slug(key)}`;
   return `
     <div class="field">
-      <label>${escapeHtml(label)}</label>
-      <select data-filter="${escapeHtml(key)}">
+      <label for="${id}">${escapeHtml(label)}</label>
+      <select id="${id}" data-filter="${escapeHtml(key)}">
         <option value="">Todos</option>
         ${specialLabel ? `<option value="" selected disabled>${escapeHtml(specialLabel)}</option>` : ""}
         ${options.map((value) => `<option value="${escapeHtml(value)}" ${value === selectedValue && !specialLabel ? "selected" : ""}>${escapeHtml(value)}</option>`).join("")}
@@ -716,38 +925,32 @@ function kanbanSelectFilter(key, label, values, selected) {
 }
 
 function getDistinct(field) {
+  const catalogMap = { hotel: "División", department: "Departamento", impact: "Impacto" };
+  if (catalogMap[field]) return getCatalog(catalogMap[field]);
   return [...new Set(state.incidents.map((row) => normalize(row[field])).filter(Boolean))].sort();
 }
 
 function renderDashboard() {
   const rows = filteredIncidents();
-  const open = rows.filter((row) => !CLOSED.includes(row.status));
-  const closed = rows.filter((row) => CLOSED.includes(row.status));
-  const overdue = open.filter((row) => slaInfo(row).days < 0);
-  const dueSoon = open.filter((row) => {
-    const days = slaInfo(row).days;
-    return days !== null && days >= 0 && days <= 1;
-  });
-  const critical = rows.filter((row) => ["Crítica", "Critica"].includes(row.priority));
-  const closedMonth = closed.filter((row) => fmtDate(row.closed_at).slice(3) === fmtDate(new Date()).slice(3));
-  const slaMet = rows.filter((row) => slaInfo(row).met).length;
-  const trendValues = dashboardTrendValues(rows);
+  const metrics = dashboardMetrics(rows);
+  const currentMonth = monthKey(new Date());
+  const closedMonth = metrics.closed.filter((row) => monthKey(row.closed_at) === currentMonth);
   return `
     ${pageHead("Dashboard", "Indicadores ejecutivos y comportamiento operativo.")}
     ${renderFilters()}
     <div class="dashboard-metrics">
-      ${metricCard("Abiertas", open.length, `${pct(open.length, rows.length)}% del total`, "blue", trendValues)}
-      ${metricCard("Vencidas", overdue.length, "Fuera de SLA", "red", trendValues)}
-      ${metricCard("Críticas", critical.length, "Prioridad máxima", "orange", trendValues)}
-      ${metricCard("SLA cumplido", `${pct(slaMet, rows.length)}%`, `${closedMonth.length} cerradas este mes`, "green", trendValues)}
+      ${metricCard("Abiertas", metrics.open.length, `${pct(metrics.open.length, rows.length)}% del total`, "blue", dashboardTrendValues(metrics.open))}
+      ${metricCard("Vencidas", metrics.overdue.length, "Abiertas fuera de SLA", "red", dashboardTrendValues(metrics.overdue))}
+      ${metricCard("Críticas abiertas", metrics.criticalOpen.length, "Prioridad máxima activa", "orange", dashboardTrendValues(metrics.criticalOpen))}
+      ${metricCard("Cierres en SLA", `${metrics.slaCompliance.toFixed(1)}%`, `${closedMonth.length} cerradas este mes`, "green", dashboardTrendValues(metrics.closedInSla, "closed_at"))}
     </div>
     <div class="dashboard-board">
       ${trendPanel("Tendencia mensual", rows, "dashboard-panel-6")}
-      ${donutPanel("Cumplimiento SLA", slaMet, rows.length, "En SLA", "Fuera SLA", "#16a34a", "dashboard-panel-3")}
-      ${barPanel("Carga por departamento", rows, "department", "dashboard-panel-3")}
+      ${donutPanel("Cumplimiento de cierre", metrics.closedInSla.length, metrics.closed.length, "En SLA", "Fuera SLA", "#16a34a", "dashboard-panel-3")}
+      ${barPanel("Carga abierta por departamento", metrics.open, "department", "dashboard-panel-3")}
       ${piePanel("Impacto", rows, "impact", "dashboard-panel-4")}
-      ${priorityPanel(rows, "dashboard-panel-4")}
-      ${attentionPanel([...overdue, ...dueSoon, ...critical], "dashboard-panel-4")}
+      ${priorityPanel(metrics.open, "dashboard-panel-4")}
+      ${attentionPanel([...metrics.overdue, ...metrics.dueSoon, ...metrics.criticalOpen], "dashboard-panel-4")}
     </div>
   `;
 }
@@ -756,8 +959,8 @@ function kpi(label, value, sub) {
   return `<div class="kpi"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div><div class="sub">${escapeHtml(sub)}</div></div>`;
 }
 
-function dashboardTrendValues(rows) {
-  return recentMonths(6).map((month) => rows.filter((row) => monthKey(row.created_at) === month.key).length);
+function dashboardTrendValues(rows, dateField = "created_at") {
+  return recentMonths(6).map((month) => rows.filter((row) => monthKey(row[dateField]) === month.key).length);
 }
 
 function metricSparkline(values) {
@@ -1030,26 +1233,36 @@ function attentionPanel(rows, extra = "") {
 
 function renderIncidents() {
   const rows = filteredIncidents();
+  const pagination = pageSlice(rows, state.incidentPage, state.incidentPageSize);
+  state.incidentPage = pagination.page;
   const createAction = canEditIncident(null, "create") ? `<button class="btn primary" data-action="new-incident">Nueva incidencia</button>` : "";
   return `
     ${pageHead("Incidencias", "Gestiona incidencias de auditoría y su seguimiento.", createAction)}
     <div class="toolbar table-toolbar">
-      <strong>${rows.length} registro(s)</strong>
+      <div><strong>${rows.length} registro(s)</strong><span class="toolbar-caption">Mostrando ${pagination.start}-${pagination.end}</span></div>
       <div class="toolbar-actions">
         <div class="field toolbar-search">
-          <label>Buscar</label>
-          <input data-filter="search" value="${escapeHtml(state.filters.search)}" placeholder="ID, asunto, descripción...">
+          <label for="incident-search">Buscar</label>
+          <input id="incident-search" data-filter="search" value="${escapeHtml(state.filters.search)}" placeholder="ID, asunto, descripción...">
         </div>
+        <details class="column-picker">
+          <summary class="btn">Columnas</summary>
+          <div class="column-picker-menu">
+            ${allIncidentColumns().map((column) => `<label><input type="checkbox" data-visible-column="${escapeHtml(column.key)}" ${state.visibleColumns.includes(column.key) ? "checked" : ""}> ${escapeHtml(column.label)}</label>`).join("")}
+          </div>
+        </details>
+        <button class="btn" type="button" data-density-toggle>Densidad: ${state.tableDensity === "compact" ? "compacta" : "cómoda"}</button>
         <button class="btn" data-action="export-excel">Exportar Excel</button>
       </div>
     </div>
-    ${excelTable(rows)}
+    ${renderActiveFilterChips()}
+    ${excelTable(pagination.rows)}
+    ${renderPagination(pagination)}
   `;
 }
 
-function incidentColumns() {
+function allIncidentColumns() {
   return [
-    { key: "actions", label: "Abrir" },
     { key: "id", label: "ID", filterKey: "id", sortKey: "id" },
     { key: "created_at", label: "Fecha", filterKey: "created_at", sortKey: "created_at", type: "date" },
     { key: "hotel", label: "División", filterKey: "hotel", sortKey: "hotel" },
@@ -1063,17 +1276,34 @@ function incidentColumns() {
   ];
 }
 
+function incidentColumns() {
+  return allIncidentColumns().filter((column) => state.visibleColumns.includes(column.key));
+}
+
+function renderPagination(pagination) {
+  return `
+    <nav class="pagination" aria-label="Paginación de incidencias">
+      <div class="field page-size"><label for="incident-page-size">Filas</label><select id="incident-page-size" data-page-size>${INCIDENT_PAGE_SIZES.map((size) => `<option value="${size}" ${size === state.incidentPageSize ? "selected" : ""}>${size}</option>`).join("")}</select></div>
+      <span>Página ${pagination.page} de ${pagination.totalPages}</span>
+      <div>
+        <button class="btn tiny" type="button" data-page-move="-1" ${pagination.page <= 1 ? "disabled" : ""}>Anterior</button>
+        <button class="btn tiny" type="button" data-page-move="1" ${pagination.page >= pagination.totalPages ? "disabled" : ""}>Siguiente</button>
+      </div>
+    </nav>
+  `;
+}
+
 function excelTable(rows) {
   const columns = incidentColumns();
   return `
     <div class="excel-wrap">
       <div class="excel-scroller">
-        <table class="excel">
+        <table class="excel ${escapeHtml(state.tableDensity)}">
           <thead><tr>${columns.map((column) => `<th>${renderTableHeader(column)}</th>`).join("")}</tr></thead>
           <tbody>
             ${rows.length ? rows.map((row) => `
-              <tr>
-                ${columns.map(({ key }) => `<td>${cellValue(row, key)}</td>`).join("")}
+              <tr class="incident-row" data-row-id="${escapeHtml(row.id)}" tabindex="0" aria-label="Abrir incidencia ${escapeHtml(row.id)}">
+                ${columns.map(({ key }) => `<td class="col-${escapeHtml(slug(key))}">${cellValue(row, key)}</td>`).join("")}
               </tr>
             `).join("") : `<tr><td colspan="${columns.length}" class="empty">No hay incidencias con los filtros seleccionados.</td></tr>`}
           </tbody>
@@ -1127,7 +1357,6 @@ function columnOptionLabel(value, column) {
 
 function cellValue(row, key) {
   if (key === "id") return escapeHtml(row.id);
-  if (key === "actions") return `<button class="btn tiny" data-action="open-incident" data-id="${escapeHtml(row.id)}">Abrir</button>`;
   if (key === "created_at" || key === "due_at") return escapeHtml(fmtDate(row[key]));
   if (key === "priority") return badge(row.priority);
   if (key === "status") return badge(row.status);
@@ -1142,13 +1371,15 @@ function cellValue(row, key) {
 
 function renderKanban() {
   const rows = filteredIncidents();
+  const finalizedCount = rows.filter((row) => CLOSED.includes(row.status)).length;
+  const visibleStatuses = state.showFinalized ? STATUSES : STATUSES.filter((status) => !CLOSED.includes(status));
   return `
     <div class="kanban-page">
-      ${pageHead("Kanban", "Seguimiento por estatus con cambio rápido.")}
+      ${pageHead("Kanban", "Seguimiento por estatus con cambio rápido.", `<button class="btn" type="button" data-finalized-toggle>${state.showFinalized ? "Ocultar" : "Mostrar"} finalizadas (${finalizedCount})</button>`)}
       ${renderKanbanFilters()}
       <div class="kanban-board-scroll">
-        <div class="kanban">
-          ${STATUSES.map((status) => {
+        <div class="kanban ${state.showFinalized ? "with-finalized" : ""}">
+          ${visibleStatuses.map((status) => {
             const group = rows.filter((row) => row.status === status);
             return `
               <section class="kanban-col ${slug(status)}">
@@ -1206,13 +1437,13 @@ function filteredAuditEntries() {
 function renderAudit() {
   const rows = filteredAuditEntries();
   return `
-    ${pageHead("Bitácora", "Historial completo de cambios y comentarios.")}
+    ${pageHead("Bitácora", "Historial paginado de cambios y comentarios.")}
     <div class="toolbar table-toolbar">
-      <strong>${rows.length} movimiento(s)</strong>
+      <div><strong>${rows.length} movimiento(s)</strong><span class="toolbar-caption">${state.audit.length} cargados</span></div>
       <div class="toolbar-actions">
         <div class="field toolbar-search">
-          <label>Buscar</label>
-          <input data-audit-filter="search" value="${escapeHtml(state.auditFilters.search)}" placeholder="ID, usuario, acción, comentario...">
+          <label for="audit-search">Buscar</label>
+          <input id="audit-search" data-audit-filter="search" value="${escapeHtml(state.auditFilters.search)}" placeholder="ID, usuario, acción, comentario...">
         </div>
         <button class="btn" data-action="export-audit">Exportar Excel</button>
       </div>
@@ -1238,6 +1469,7 @@ function renderAudit() {
         </table>
       </div>
     </div>
+    ${state.auditHasMore ? `<div class="load-more"><button class="btn" type="button" data-audit-more ${state.auditLoadingMore ? "disabled" : ""}>${state.auditLoadingMore ? "Cargando..." : `Cargar ${AUDIT_PAGE_SIZE} más`}</button></div>` : `<div class="load-more muted">No hay más movimientos.</div>`}
   `;
 }
 
@@ -1259,12 +1491,11 @@ function renderUsers() {
     <div class="excel-wrap">
       <div class="excel-scroller">
         <table class="excel">
-          <thead><tr><th>Usuario</th><th>Password</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Intentos fallidos</th><th>Bloqueado</th><th>Debe cambiar password</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Intentos fallidos</th><th>Bloqueado</th><th>Debe cambiar password</th><th>Acciones</th></tr></thead>
           <tbody>
             ${rows.map((row) => `
               <tr>
                 <td>${escapeHtml(row.username || "")}</td>
-                <td>${escapeHtml(row.password_mask || PASSWORD_MASK)}</td>
                 <td>${escapeHtml(row.display_name || "")}</td>
                 <td>${badge(row.role || "Auditor")}</td>
                 <td>${badge(row.status || "Activo")}</td>
@@ -1282,7 +1513,7 @@ function renderUsers() {
                   </div>
                 </td>
               </tr>
-            `).join("") || `<tr><td colspan="10" class="empty">No hay usuarios con los filtros seleccionados.</td></tr>`}
+            `).join("") || `<tr><td colspan="9" class="empty">No hay usuarios con los filtros seleccionados.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -1304,7 +1535,7 @@ function renderUserFilters() {
   const f = state.userFilters;
   return `
     <div class="filters user-filters">
-      <div class="field"><label>Buscar</label><input data-user-filter="search" value="${escapeHtml(f.search)}" placeholder="Usuario o nombre"></div>
+      <div class="field"><label for="user-search">Buscar</label><input id="user-search" data-user-filter="search" value="${escapeHtml(f.search)}" placeholder="Usuario o nombre"></div>
       ${renderMultiFilter("users", "role", "Rol", ROLES, f.role)}
       ${renderMultiFilter("users", "status", "Estado", PROFILE_STATUSES, f.status)}
     </div>
@@ -1603,6 +1834,7 @@ function handleColumnFilterClick(event) {
       : selectedValues;
     state.filters[key] = nextValues.length === options.length ? [] : nextValues.length ? nextValues : [NO_FILTER_MATCH];
     state.openFilterMenu = "";
+    incidentFiltersChanged();
     renderPage();
     return;
   }
@@ -1610,6 +1842,7 @@ function handleColumnFilterClick(event) {
   if (target.dataset.columnFilterClear) {
     state.filters[target.dataset.columnFilterClear] = [];
     state.openFilterMenu = "";
+    incidentFiltersChanged();
     renderPage();
     return;
   }
@@ -1643,6 +1876,92 @@ function bindPageEvents() {
     pageRoot.dataset.columnFilterHandlerBound = "true";
     pageRoot.addEventListener("click", handleColumnFilterClick);
   }
+  document.querySelector("[data-filter-toggle]")?.addEventListener("click", () => {
+    state.filtersOpen = !state.filtersOpen;
+    persistUiState();
+    renderPage();
+  });
+  document.querySelectorAll("[data-filter-preset]").forEach((button) => {
+    button.addEventListener("click", () => {
+      resetIncidentFilters();
+      if (button.dataset.filterPreset === "open") state.filters.status = STATUSES.filter((status) => !CLOSED.includes(status));
+      if (button.dataset.filterPreset === "critical") {
+        state.filters.priority = ["Crítica"];
+        state.filters.status = STATUSES.filter((status) => !CLOSED.includes(status));
+      }
+      state.filtersOpen = false;
+      incidentFiltersChanged();
+      renderPage();
+    });
+  });
+  document.querySelectorAll("[data-filter-chip]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.filterChip;
+      state.filters[key] = Array.isArray(state.filters[key]) ? [] : "";
+      incidentFiltersChanged();
+      renderPage();
+    });
+  });
+  document.querySelectorAll("[data-filter-reset]").forEach((button) => {
+    button.addEventListener("click", () => {
+      resetIncidentFilters();
+      renderPage();
+    });
+  });
+  document.querySelectorAll("[data-visible-column]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const key = input.dataset.visibleColumn;
+      const next = input.checked
+        ? [...new Set([...state.visibleColumns, key])]
+        : state.visibleColumns.filter((column) => column !== key);
+      if (!next.length) {
+        input.checked = true;
+        showToast("Mantenga al menos una columna visible.");
+        return;
+      }
+      state.visibleColumns = next;
+      persistUiState();
+      renderPage();
+    });
+  });
+  document.querySelector("[data-density-toggle]")?.addEventListener("click", () => {
+    state.tableDensity = state.tableDensity === "compact" ? "comfortable" : "compact";
+    persistUiState();
+    renderPage();
+  });
+  document.querySelector("[data-page-size]")?.addEventListener("change", (event) => {
+    state.incidentPageSize = Number(event.currentTarget.value);
+    state.incidentPage = 1;
+    persistUiState();
+    renderPage();
+  });
+  document.querySelectorAll("[data-page-move]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.incidentPage += Number(button.dataset.pageMove);
+      renderPage();
+    });
+  });
+  document.querySelectorAll("[data-row-id]").forEach((row) => {
+    const open = () => openDetailModal(state.incidents.find((item) => item.id === row.dataset.rowId));
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", (event) => {
+      if (["Enter", " "].includes(event.key)) {
+        event.preventDefault();
+        open();
+      }
+    });
+  });
+  document.querySelector("[data-finalized-toggle]")?.addEventListener("click", () => {
+    state.showFinalized = !state.showFinalized;
+    persistUiState();
+    renderPage();
+  });
+  document.querySelector("[data-audit-more]")?.addEventListener("click", () => {
+    loadMoreAudit().catch((error) => {
+      console.error(error);
+      showToast("No se pudieron cargar más movimientos.");
+    });
+  });
   document.querySelectorAll("[data-multi-filter-menu]").forEach((menu) => {
     menu.addEventListener("toggle", () => {
       if (menu.open) {
@@ -1657,6 +1976,7 @@ function bindPageEvents() {
     const eventName = input.tagName === "SELECT" ? "change" : "input";
     input.addEventListener(eventName, () => {
       state.filters[input.dataset.filter] = input.value;
+      incidentFiltersChanged();
       renderPageKeepingInput(input, "[data-filter]", "filter");
     });
   });
@@ -1665,6 +1985,7 @@ function bindPageEvents() {
       const key = input.dataset.filterOption;
       state.filters[key] = checkedFilterValues("[data-filter-option]", key, "filterOption");
       state.openFilterMenu = `incidents:${key}`;
+      incidentFiltersChanged();
       renderPage();
     });
   });
@@ -1673,6 +1994,7 @@ function bindPageEvents() {
       const key = button.dataset.filterClear;
       state.filters[key] = [];
       state.openFilterMenu = `incidents:${key}`;
+      incidentFiltersChanged();
       renderPage();
     });
   });
@@ -1805,15 +2127,17 @@ async function handleAction(action, id) {
 function modalHtml(title, body, footer = "", variant = "") {
   const modal = document.querySelector("#modal");
   modal.className = ["modal", variant].filter(Boolean).join(" ");
+  modal.setAttribute("aria-labelledby", "modal-title");
   modal.innerHTML = `
     <div class="modal-body">
-      <div class="modal-head"><h3>${escapeHtml(title)}</h3><button class="btn ghost" data-modal-close>Cerrar</button></div>
+      <div class="modal-head"><h3 id="modal-title">${escapeHtml(title)}</h3><button class="btn ghost modal-close" type="button" data-modal-close aria-label="Cerrar">${icon("close")}</button></div>
       ${body}
       ${footer}
     </div>
   `;
   modal.showModal();
   modal.querySelector("[data-modal-close]").addEventListener("click", () => modal.close());
+  queueMicrotask(() => modal.querySelector("input, select, textarea, button:not([data-modal-close])")?.focus());
   return modal;
 }
 
@@ -1867,13 +2191,14 @@ function openIncidentModal(row = null) {
 }
 
 function field(name, label, value = "", type = "text", options = [], extra = "") {
+  const id = `field-${slug(name)}`;
   if (type === "select") {
-    return `<div class="field ${extra}"><label>${escapeHtml(label)}</label><select name="${name}">${optionList(options, value)}</select></div>`;
+    return `<div class="field ${extra}"><label for="${id}">${escapeHtml(label)}</label><select id="${id}" name="${name}">${optionList(options, value)}</select></div>`;
   }
   if (type === "textarea") {
-    return `<div class="field ${extra}"><label>${escapeHtml(label)}</label><textarea name="${name}">${escapeHtml(value || "")}</textarea></div>`;
+    return `<div class="field ${extra}"><label for="${id}">${escapeHtml(label)}</label><textarea id="${id}" name="${name}">${escapeHtml(value || "")}</textarea></div>`;
   }
-  return `<div class="field ${extra}"><label>${escapeHtml(label)}</label><input name="${name}" type="${type}" value="${escapeHtml(value || "")}"></div>`;
+  return `<div class="field ${extra}"><label for="${id}">${escapeHtml(label)}</label><input id="${id}" name="${name}" type="${type}" value="${escapeHtml(value || "")}"></div>`;
 }
 
 function formObject(form) {
@@ -1893,7 +2218,7 @@ function validateProfilePayload(payload, existing = null) {
   if (!payload.username || !payload.display_name || !payload.role || !payload.status) {
     return "Usuario, nombre, rol y estado son obligatorios.";
   }
-  if (!existing && normalize(payload.password).length < 8) return "La contraseña inicial debe tener al menos 8 caracteres.";
+  if (!existing && !isStrongPassword(payload.password)) return "La contraseña debe tener 12 caracteres, mayúscula, minúscula, número y símbolo.";
   if (!ROLES.includes(payload.role)) return "Selecciona un rol válido.";
   if (!PROFILE_STATUSES.includes(payload.status)) return "Selecciona un estado válido.";
   const duplicateUser = state.profiles.find((profile) =>
@@ -1912,29 +2237,14 @@ function validateProfilePayload(payload, existing = null) {
   return "";
 }
 
-async function logUserAction(targetProfile, action, oldValue, newValue, comment) {
-  await supabase.from("audit_log").insert({
-    incident_id: null,
-    user_id: state.profile?.id,
-    legacy_user: state.profile?.display_name || state.profile?.username || "Usuario",
-    action,
-    changed_field: `Usuario: ${targetProfile?.username || ""}`,
-    old_value: oldValue || "",
-    new_value: newValue || "",
-    comment,
-    hotel: "",
-    status: targetProfile?.status || ""
-  });
-}
-
 function openUserModal(existing = null) {
   const isEdit = Boolean(existing);
   const body = `
     <form id="userForm" class="form-grid">
       ${!isEdit ? `
         <div class="field form-full">
-          <label>Contraseña inicial</label>
-          <input name="password" type="password" required autocomplete="new-password">
+          <label for="initial-password">Contraseña inicial</label>
+          <input id="initial-password" name="password" type="password" minlength="12" required autocomplete="new-password">
         </div>
       ` : ""}
       ${field("username", "Usuario", existing?.username || "")}
@@ -1956,11 +2266,13 @@ function openUserModal(existing = null) {
       return;
     }
     try {
+      setFormBusy(event.currentTarget, true, isEdit ? "Guardando..." : "Creando...");
       await saveProfile(payload, existing);
       modal.close();
     } catch (error) {
       console.error(error);
       showToast(friendlyUserSaveError(error));
+      setFormBusy(event.currentTarget, false);
     }
   });
 }
@@ -1988,6 +2300,7 @@ async function saveProfile(payload, existing = null) {
 async function toggleUserStatus(profile) {
   if (!profile) return;
   const nextStatus = profile.status === "Activo" ? "Inactivo" : "Activo";
+  if (nextStatus === "Inactivo" && !window.confirm(`¿Inactivar a ${profile.display_name || profile.username}? Ya no podrá iniciar sesión.`)) return;
   const validation = validateProfilePayload({ ...profile, status: nextStatus }, profile);
   if (validation) {
     showToast(validation);
@@ -2010,6 +2323,7 @@ async function toggleUserStatus(profile) {
 async function toggleUserBlocked(profile) {
   if (!profile) return;
   const nextBlocked = !profile.blocked;
+  if (nextBlocked && !window.confirm(`¿Bloquear a ${profile.display_name || profile.username}? Sus sesiones activas dejarán de ser válidas.`)) return;
   const validation = validateProfilePayload({ ...profile, blocked: boolText(nextBlocked) }, profile);
   if (validation) {
     showToast(validation);
@@ -2034,8 +2348,8 @@ function openPasswordModal(profile) {
   const modal = modalHtml(`Contraseña de ${profile.username || "usuario"}`, `
     <form id="resetPasswordForm" class="form-grid" autocomplete="off">
       <div class="field form-full">
-        <label>Nueva contraseña temporal</label>
-        <input name="password" type="password" required autocomplete="new-password">
+        <label for="reset-password">Nueva contraseña temporal</label>
+        <input id="reset-password" name="password" type="password" minlength="12" required autocomplete="new-password">
       </div>
       ${field("must_change_password", "Debe cambiar password", "Sí", "select", YES_NO, "form-full")}
       <button class="btn primary form-full" type="submit">Restablecer contraseña</button>
@@ -2044,17 +2358,23 @@ function openPasswordModal(profile) {
   modal.querySelector("#resetPasswordForm").addEventListener("submit", (event) => {
     event.preventDefault();
     const payload = formObject(event.currentTarget);
+    if (!isStrongPassword(payload.password)) {
+      showToast("Use 12 caracteres, mayúscula, minúscula, número y símbolo.");
+      return;
+    }
+    setFormBusy(event.currentTarget, true, "Restableciendo...");
     registerPasswordReset(profile, payload.password, boolValue(payload.must_change_password)).catch((error) => {
       console.error(error);
       showToast("No fue posible registrar el restablecimiento.");
+      setFormBusy(event.currentTarget, false);
     });
   });
 }
 
 async function registerPasswordReset(profile, password = "", mustChangePassword = true) {
   if (!profile) return;
-  if (normalize(password).length < 8) {
-    showToast("La contraseña temporal debe tener al menos 8 caracteres.");
+  if (!isStrongPassword(password)) {
+    showToast("Use 12 caracteres, mayúscula, minúscula, número y símbolo.");
     return;
   }
   const response = await requireOk(await supabase.rpc("app_admin_reset_password", {
@@ -2086,60 +2406,36 @@ function openUserAuditModal(profile) {
 }
 
 async function createIncident(payload) {
-  const due = payload.due_at || dueDate(payload.priority);
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const row = {
-      id: incidentId(),
-      ...payload,
-      due_at: due,
-      actual_due_at: due,
-      created_by: state.profile?.id,
-      updated_by: state.profile?.id,
-      created_at: nowISO(),
-      updated_at: nowISO()
-    };
-    try {
-      await requireOk(await supabase.from("incidents").insert(row), "No se pudo crear la incidencia.");
-      await insertAudit(row.id, "Creación", "Incidencia", "", "Creada", "Incidencia creada.", row);
-      showToast(`Incidencia ${row.id} creada.`);
-      await reload();
-      return;
-    } catch (error) {
-      if (!isDuplicateIdError(error) || attempt === 2) throw error;
-      await loadAppData();
-    }
-  }
+  const response = await requireOk(await supabase.rpc("app_create_incident", {
+    p_token: sessionToken(),
+    p_incident: { ...payload, due_at: payload.due_at || dueDate(payload.priority) }
+  }), "No se pudo crear la incidencia.");
+  if (!response?.ok) throw new Error(response?.reason || "No se pudo crear la incidencia.");
+  showToast(`Incidencia ${response.incident?.id || "creada"}.`);
+  await reload();
 }
 
 async function updateIncident(row, changes, action, comment) {
   if (!row) return;
-  const payload = { ...changes, updated_by: state.profile?.id, updated_at: nowISO() };
-  if (payload.status && CLOSED.includes(payload.status) && !row.closed_at) payload.closed_at = nowISO();
-  if (payload.status && !CLOSED.includes(payload.status)) payload.closed_at = null;
-
-  await requireOk(await supabase.from("incidents").update(payload).eq("id", row.id), "No se pudo actualizar.");
-  for (const [fieldName, newValue] of Object.entries(changes)) {
-    if (String(row[fieldName] ?? "") !== String(newValue ?? "")) {
-      await insertAudit(row.id, action, fieldName, row[fieldName], newValue, comment, { ...row, ...payload });
-    }
-  }
+  const response = await requireOk(await supabase.rpc("app_update_incident", {
+    p_token: sessionToken(),
+    p_incident_id: row.id,
+    p_changes: changes,
+    p_action: action,
+    p_comment: comment || ""
+  }), "No se pudo actualizar.");
+  if (!response?.ok) throw new Error(response?.reason || "No se pudo actualizar.");
   showToast("Cambios guardados.");
   await reload();
 }
 
-async function insertAudit(incidentIdValue, action, fieldName, oldValue, newValue, comment, row) {
-  await supabase.from("audit_log").insert({
-    incident_id: incidentIdValue,
-    user_id: state.profile?.id,
-    legacy_user: state.profile?.display_name || state.profile?.username || "Usuario",
-    action,
-    changed_field: fieldName,
-    old_value: oldValue ?? "",
-    new_value: newValue ?? "",
-    comment,
-    hotel: row?.hotel || "",
-    status: row?.status || ""
-  });
+async function addIncidentComment(row, comment) {
+  const response = await requireOk(await supabase.rpc("app_add_incident_comment", {
+    p_token: sessionToken(),
+    p_incident_id: row.id,
+    p_comment: comment
+  }), "No se pudo guardar el comentario.");
+  if (!response?.ok) throw new Error(response?.reason || "No se pudo guardar el comentario.");
 }
 
 function detailValue(value, fallback = "No registrado") {
@@ -2243,10 +2539,21 @@ function openCommentModal(row) {
   modal.querySelector("#commentForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = formObject(event.currentTarget);
-    await insertAudit(row.id, "Comentario", "Comentario", "", payload.comment, payload.comment, row);
-    showToast("Comentario guardado.");
-    modal.close();
-    await reload();
+    if (!payload.comment) {
+      showToast("El comentario es obligatorio.");
+      return;
+    }
+    setFormBusy(event.currentTarget, true, "Guardando...");
+    try {
+      await addIncidentComment(row, payload.comment);
+      showToast("Comentario guardado.");
+      modal.close();
+      await reload();
+    } catch (error) {
+      console.error(error);
+      showToast("No fue posible guardar el comentario.");
+      setFormBusy(event.currentTarget, false);
+    }
   });
 }
 
@@ -2265,8 +2572,15 @@ function openCloseModal(row) {
       showToast("El comentario final es obligatorio.");
       return;
     }
-    await updateIncident(row, { ...payload, status: "Cerrado", closed_at: nowISO() }, "Cierre formal", payload.final_comment);
-    modal.close();
+    setFormBusy(event.currentTarget, true, "Cerrando...");
+    try {
+      await updateIncident(row, { ...payload, status: "Cerrado" }, "Cierre formal", payload.final_comment);
+      modal.close();
+    } catch (error) {
+      console.error(error);
+      showToast("No fue posible cerrar la incidencia.");
+      setFormBusy(event.currentTarget, false);
+    }
   });
 }
 
@@ -2285,8 +2599,15 @@ function openReopenModal(row) {
       showToast("El motivo es obligatorio.");
       return;
     }
-    await updateIncident(row, { status: payload.status, closed_at: null }, "Reapertura", payload.comment);
-    modal.close();
+    setFormBusy(event.currentTarget, true, "Reabriendo...");
+    try {
+      await updateIncident(row, { status: payload.status }, "Reapertura", payload.comment);
+      modal.close();
+    } catch (error) {
+      console.error(error);
+      showToast("No fue posible reabrir la incidencia.");
+      setFormBusy(event.currentTarget, false);
+    }
   });
 }
 
@@ -2301,10 +2622,22 @@ function openCatalogModal() {
   modal.querySelector("#catalogForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = formObject(event.currentTarget);
-    await requireOk(await supabase.from("catalogs").insert(payload), "No se pudo guardar el catálogo.");
-    showToast("Catálogo guardado.");
-    modal.close();
-    await reload();
+    setFormBusy(event.currentTarget, true, "Guardando...");
+    try {
+      const response = await requireOk(await supabase.rpc("app_save_catalog_value", {
+        p_token: sessionToken(),
+        p_category: payload.category,
+        p_value: payload.value
+      }), "No se pudo guardar el catálogo.");
+      if (!response?.ok) throw new Error(response?.reason || "No se pudo guardar el catálogo.");
+      showToast("Catálogo guardado.");
+      modal.close();
+      await reload();
+    } catch (error) {
+      console.error(error);
+      showToast("No fue posible guardar el catálogo.");
+      setFormBusy(event.currentTarget, false);
+    }
   });
 }
 
@@ -2394,10 +2727,16 @@ function exportAuditExcel(rows) {
 }
 
 async function reload() {
-  await loadAppData();
-  renderApp();
+  setAppBusy(true);
+  try {
+    await loadAppData();
+    renderApp();
+  } finally {
+    setAppBusy(false);
+  }
 }
 
+restoreUiState();
 init().catch((error) => {
   console.error(error);
   app.innerHTML = `<main class="config-shell"><section class="config-card"><div class="error">${escapeHtml(error.message)}</div></section></main>`;

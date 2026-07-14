@@ -22,6 +22,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: linear-gradient(180deg, #f8fbff 0%, var(--bg) 55%, #eaf1fb 100%);
@@ -318,7 +322,8 @@ p {
   position: relative;
 }
 
-.field label {
+.field label,
+.field-label {
   color: #334155;
   font-size: 12px;
   font-weight: 850;
@@ -1836,5 +1841,504 @@ table.excel {
   }
   .content {
     padding: 14px;
+  }
+}
+
+/* Experience refresh */
+.icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex: 0 0 auto;
+}
+
+.brand-mark .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.login-eyebrow {
+  display: inline-flex;
+  margin-bottom: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--primary-dark);
+  background: #eff6ff;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.login-help {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.password-control {
+  position: relative;
+}
+
+.password-control input {
+  padding-right: 46px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  width: 36px;
+  height: 34px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.password-toggle:hover {
+  background: #eff6ff;
+  color: var(--primary);
+}
+
+.topbar-context {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-context span,
+.topbar-context strong {
+  display: block;
+}
+
+.topbar-context span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+}
+
+.topbar-context strong {
+  margin-top: 2px;
+  font-size: 18px;
+}
+
+.mobile-menu-button,
+.sidebar-backdrop {
+  display: none;
+}
+
+.filter-panel {
+  margin-bottom: 12px;
+}
+
+.filter-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.filter-toggle {
+  min-width: 120px;
+  text-align: center;
+}
+
+.filter-presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-presets button,
+.filter-reset {
+  border: 0;
+  background: transparent;
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.filter-presets button:hover,
+.filter-reset:hover {
+  background: #dbeafe;
+}
+
+.dashboard-filters {
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+}
+
+.active-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.filter-chip {
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  padding: 5px 9px;
+  font-size: 11px;
+}
+
+.filter-chip span {
+  font-weight: 850;
+}
+
+.filter-chip b {
+  margin-left: 4px;
+  font-size: 14px;
+}
+
+.toolbar-caption {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.column-picker {
+  position: relative;
+}
+
+.column-picker summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.column-picker summary::-webkit-details-marker {
+  display: none;
+}
+
+.column-picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: 230px;
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.column-picker-menu label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.column-picker-menu label:hover {
+  background: #eff6ff;
+}
+
+.excel.compact th,
+.excel.compact td {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.excel.comfortable th,
+.excel.comfortable td {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.incident-row {
+  cursor: pointer;
+}
+
+.incident-row:hover td,
+.incident-row:focus td {
+  background: #eaf3ff !important;
+}
+
+.incident-row:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.excel .col-id {
+  white-space: nowrap;
+  color: var(--primary-dark);
+  font-weight: 850;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pagination > div:last-child {
+  display: flex;
+  gap: 6px;
+}
+
+.page-size {
+  display: flex;
+  align-items: center;
+  grid-template-columns: auto 70px;
+}
+
+.page-size select {
+  padding: 5px 7px;
+  min-height: 32px;
+}
+
+.load-more {
+  display: flex;
+  justify-content: center;
+  padding: 14px;
+  font-size: 12px;
+}
+
+.modal-close {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.modal-close .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.app-busy {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(238, 244, 251, 0.72);
+  color: var(--text);
+  backdrop-filter: blur(3px);
+}
+
+.app-busy b {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+
+.spinner {
+  width: 17px;
+  height: 17px;
+  border: 2px solid #bfdbfe;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.kanban {
+  min-width: 1040px;
+  grid-template-columns: repeat(4, minmax(240px, 1fr));
+}
+
+.kanban.with-finalized {
+  min-width: 1500px;
+  grid-template-columns: repeat(6, minmax(240px, 1fr));
+}
+
+.kanban-card-footer select {
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-filters {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .app-layout {
+    display: block;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 80;
+    width: min(300px, 86vw);
+    height: 100vh;
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+    box-shadow: 18px 0 45px rgba(15, 23, 42, 0.2);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    border: 0;
+    background: rgba(15, 23, 42, 0.42);
+  }
+
+  .sidebar-backdrop.open {
+    display: block;
+  }
+
+  .nav {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-menu-button {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+    color: var(--text);
+  }
+
+  .topbar {
+    position: sticky;
+    top: 8px;
+    z-index: 50;
+  }
+
+  .kanban-page {
+    height: calc(100vh - 112px);
+  }
+}
+
+@media (max-width: 680px) {
+  .content {
+    padding: 10px;
+  }
+
+  .topbar {
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .topbar-context strong {
+    font-size: 16px;
+  }
+
+  .topbar-context span,
+  .user-chip {
+    display: none;
+  }
+
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .page-head > .btn {
+    width: 100%;
+  }
+
+  .dashboard-filters,
+  .filters,
+  .compact-filters,
+  .kanban-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-panel-head,
+  .toolbar,
+  .toolbar-actions,
+  .pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .filter-toggle,
+  .toolbar-actions > .btn,
+  .column-picker,
+  .column-picker summary {
+    width: 100%;
+  }
+
+  .filter-presets {
+    width: 100%;
+  }
+
+  .filter-presets button {
+    flex: 1;
+    background: #eff6ff;
+  }
+
+  .column-picker-menu {
+    left: 0;
+    right: auto;
+    width: 100%;
+  }
+
+  .pagination > div:last-child,
+  .pagination > div:last-child .btn {
+    flex: 1;
+  }
+
+  .login-card,
+  .config-card {
+    padding: 20px;
+  }
+
+  .brand-row {
+    align-items: flex-start;
+  }
+
+  .brand-row h1 {
+    font-size: 25px;
   }
 }
